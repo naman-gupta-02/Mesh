@@ -172,3 +172,51 @@ def recover_job(
     logits = decode(response.logits)
     timings = [StageTiming(t.node_id, t.elapsed_seconds) for t in response.timings]
     return JobResult(logits=logits, stage_timings=timings)
+
+
+def rewire_next_hop(
+    node: NodeHandle,
+    assignment: ShardAssignment,
+    include_embed: bool,
+    include_head: bool,
+    next_hop_address: str,
+    artificial_delay_seconds: float = 0.0,
+) -> None:
+    """Re-sends LoadShard to a node that's already serving `assignment`,
+    to change which address it relays to next (and/or its artificial delay
+    testing knob) without touching the shard it's holding.
+
+    recover_job() moves a dead node's shard to a standby and resumes that
+    one job by calling the standby directly, but it doesn't touch the node
+    immediately upstream of the dead one -- that node is still pointed at
+    the old (dead) address and would fail the exact same way on the next
+    job. This is the other half of healing the pipeline; see Cluster in
+    mesh/cluster.py, which calls both after a recovery.
+    """
+    response = _stub(node.address).LoadShard(
+        mesh_pb2.LoadShardRequest(
+            shard=mesh_pb2.ShardSpec(
+                layer_start=assignment.layer_start,
+                layer_end=assignment.layer_end,
+                include_embed=include_embed,
+                include_head=include_head,
+            ),
+            next_hop_address=next_hop_address,
+            artificial_delay_seconds=artificial_delay_seconds,
+        )
+    )
+    if not response.ok:
+        raise RuntimeError(f"{node.node_id} failed to rewire next hop: {response.error}")
+
+
+def replace_node_in_assignments(
+    assignments: list[ShardAssignment], index: int, new_node_id: str
+) -> list[ShardAssignment]:
+    """Returns a new assignment list with assignments[index]'s node_id
+    swapped for new_node_id, same layer range. Used after recover_job()
+    moves a shard to a standby, so future jobs plan around the new owner.
+    """
+    updated = list(assignments)
+    old = updated[index]
+    updated[index] = ShardAssignment(node_id=new_node_id, layer_start=old.layer_start, layer_end=old.layer_end)
+    return updated

@@ -160,13 +160,57 @@ and asserts the recovered output matches the monolithic model, and that the
 dead node's ID doesn't appear in the final stage timings while the
 standby's does.
 
+## Phase 3.5 — durable healing + heartbeats (`mesh/cluster.py`)
+
+`recover_job()` fixes the one job that was in flight when a node died, but
+it doesn't touch the pipeline's actual wiring: the node immediately
+upstream of the dead one is still pointed at the now-dead address, so the
+very next job would hit the exact same failure and need recovery all over
+again. `Cluster` closes that loop and adds proactive liveness tracking:
+
+- Runs a background heartbeat thread (`heartbeat_interval`, `miss_threshold`)
+  polling every tracked node's `Heartbeat` RPC independent of job
+  submission — `cluster.is_alive(node_id)` reflects this without needing a
+  job to fail first.
+- `Cluster.submit()` wraps `submit_job()`; on `grpc.RpcError` it recovers
+  internally (callers never see the exception) and — the actual fix — also
+  updates `self.assignments` and calls the new `rewire_next_hop()` on the
+  surviving upstream node, so it now points at the standby instead of the
+  dead node. The *next* job submitted routes through the standby on the
+  first try, no recovery needed.
+- `Cluster.inject_delay()` is the fault-injection testing knob (reissues
+  `LoadShard` with a new `artificial_delay_seconds`, everything else
+  unchanged) used by the demo/tests to get a deterministic window to kill a
+  node.
+
+### Run it
+
+```
+python3 scripts/run_cluster_demo.py
+```
+
+Three jobs against the same cluster: job 1 normal (baseline), job 2 kills a
+node mid-request (`Cluster.submit()` recovers internally), job 3 is
+submitted fresh afterward and is checked to route through the standby
+*without* touching the dead node at all — proving the healing persisted
+past the one recovered job.
+
+### Test
+
+```
+pytest tests/
+```
+
+`tests/test_cluster.py` automates the same three-job scenario and asserts
+job 3's stage timings and `cluster.assignments` no longer reference the
+dead node.
+
 ## What's next (not built yet)
 
 Per the original build order: run on real separate hardware (not just
 localhost — architecture doesn't change, just point `--address` at a LAN
-IP), then a closed campus beta. Also pending: a heartbeat loop that
-proactively detects failures on a timer rather than reacting to a failed
-RPC (the `Heartbeat` RPC exists but nothing polls it yet), re-planning the
-partition after recovery so future jobs don't route through the dead node
-again, sandboxed node daemons, signed/checksummed weight distribution, and
-latency-aware scheduling.
+IP), then a closed campus beta. Also pending: re-profiling nodes after a
+topology change (today's healing keeps the original partition's layer
+*ranges*, it doesn't recompute them for the replacement node's actual
+throughput), sandboxed node daemons, signed/checksummed weight
+distribution, and latency-aware scheduling.
