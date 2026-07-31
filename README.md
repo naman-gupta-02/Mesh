@@ -109,11 +109,64 @@ drives them through the full RPC flow, and checks output against a
 monolithic forward pass — the networked equivalent of
 `test_pipeline_correctness.py`.
 
+## Phase 3 — fault tolerance
+
+The headline failure mode from the plan: a volunteer's laptop dies mid-job.
+Every node now caches its own output per `job_id` in memory; when the chain
+breaks, the coordinator doesn't restart the whole job — it finds the last
+node that finished, reassigns the dead node's layer range to a standby, and
+resumes from that node's cached checkpoint.
+
+- `mesh/proto/mesh.proto` — added `GetCheckpoint` (returns a node's cached
+  output for a `job_id`, or `available=false`) and `artificial_delay_seconds`
+  on `LoadShardRequest` (a testing knob: sleep before computing, so a
+  fault-injection harness has a deterministic window to kill the process).
+- `mesh/daemon.py` — `Forward` now caches `encode(output)` per `job_id`
+  before relaying downstream, and serves it back via `GetCheckpoint`.
+- `mesh/net_coordinator.py` — `find_last_checkpoint()` walks the pipeline
+  querying each node's checkpoint to find how far a broken job got;
+  `recover_job()` loads the failed shard's spec onto a standby (same layer
+  range, same original `next_hop_address`) and resumes from there.
+
+Recovery limitation, by design for now: if a node dies *after* computing its
+own output but *before* its downstream RPC call returns, that in-flight
+output is lost with it (it only lived in the dead process's memory) — the
+standby just recomputes that one shard from the last node that's still
+alive. Also, stage timings from before the failure aren't preserved across
+recovery (the original blocking call raised before returning anything);
+only timings from the standby onward are reported. Both are "correctness
+over speed" trade-offs, matching the plan's stated priority for v1.
+
+### Run it
+
+```
+python3 scripts/run_fault_injection_demo.py
+```
+
+Starts 4 primary daemons plus 1 idle standby, submits a job, `SIGKILL`s one
+primary node partway through its artificial delay (before it produces any
+output), then shows the coordinator catching the failed RPC, reassigning
+that node's shard to the standby, and resuming — with final output still
+checked against a monolithic forward pass.
+
+### Test
+
+```
+pytest tests/
+```
+
+`tests/test_fault_tolerance.py` automates the same kill-mid-request scenario
+and asserts the recovered output matches the monolithic model, and that the
+dead node's ID doesn't appear in the final stage timings while the
+standby's does.
+
 ## What's next (not built yet)
 
-Per the original build order: real hardware (not just localhost), fault
-injection (kill nodes mid-job, checkpoint/reassignment recovery), then a
-closed campus beta. Also pending: a heartbeat loop driving failure
-detection (the `Heartbeat` RPC exists but nothing polls it yet on a timer),
-sandboxed node daemons, signed/checksummed weight distribution, and
+Per the original build order: run on real separate hardware (not just
+localhost — architecture doesn't change, just point `--address` at a LAN
+IP), then a closed campus beta. Also pending: a heartbeat loop that
+proactively detects failures on a timer rather than reacting to a failed
+RPC (the `Heartbeat` RPC exists but nothing polls it yet), re-planning the
+partition after recovery so future jobs don't route through the dead node
+again, sandboxed node daemons, signed/checksummed weight distribution, and
 latency-aware scheduling.

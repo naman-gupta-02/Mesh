@@ -26,6 +26,11 @@ class NodeDaemonServicer(mesh_pb2_grpc.NodeDaemonServicer):
         self._model = None  # lazily loaded; every shard slices from these weights
         self.shard: ModelShard | None = None
         self._next_hop_stub: mesh_pb2_grpc.NodeDaemonStub | None = None
+        self._artificial_delay = 0.0
+        # job_id -> this node's own encoded output. Lets the coordinator
+        # resume a broken chain from the last node that finished (see
+        # GetCheckpoint) instead of restarting the whole job.
+        self._checkpoints: dict[str, bytes] = {}
 
     def _load_model(self):
         if self._model is None:
@@ -55,6 +60,7 @@ class NodeDaemonServicer(mesh_pb2_grpc.NodeDaemonServicer):
                 self._next_hop_stub = mesh_pb2_grpc.NodeDaemonStub(channel)
             else:
                 self._next_hop_stub = None
+            self._artificial_delay = request.artificial_delay_seconds
             return mesh_pb2.LoadShardResponse(ok=True)
         except Exception as exc:
             return mesh_pb2.LoadShardResponse(ok=False, error=str(exc))
@@ -62,6 +68,12 @@ class NodeDaemonServicer(mesh_pb2_grpc.NodeDaemonServicer):
     def Forward(self, request, context):
         if self.shard is None:
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, f"{self.node_id}: no shard loaded")
+
+        if self._artificial_delay > 0:
+            # Sleep before computing (not after), so a fault-injection
+            # harness has a deterministic window to kill this process
+            # mid-request and see the coordinator's recovery path exercised.
+            time.sleep(self._artificial_delay)
 
         tensor = decode(request.tensor)
         start = time.perf_counter()
@@ -72,9 +84,12 @@ class NodeDaemonServicer(mesh_pb2_grpc.NodeDaemonServicer):
         elapsed = time.perf_counter() - start
         my_timing = mesh_pb2.StageTiming(node_id=self.node_id, elapsed_seconds=elapsed)
 
+        encoded_output = encode(output)
+        self._checkpoints[request.job_id] = encoded_output
+
         if self._next_hop_stub is not None:
             downstream = self._next_hop_stub.Forward(
-                mesh_pb2.ForwardRequest(job_id=request.job_id, tensor=encode(output))
+                mesh_pb2.ForwardRequest(job_id=request.job_id, tensor=encoded_output)
             )
             return mesh_pb2.ForwardResponse(
                 job_id=request.job_id,
@@ -84,12 +99,18 @@ class NodeDaemonServicer(mesh_pb2_grpc.NodeDaemonServicer):
 
         return mesh_pb2.ForwardResponse(
             job_id=request.job_id,
-            logits=encode(output),
+            logits=encoded_output,
             timings=[my_timing],
         )
 
     def Heartbeat(self, request, context):
         return mesh_pb2.HeartbeatResponse(node_id=self.node_id, alive=True)
+
+    def GetCheckpoint(self, request, context):
+        checkpoint = self._checkpoints.get(request.job_id)
+        if checkpoint is None:
+            return mesh_pb2.GetCheckpointResponse(available=False)
+        return mesh_pb2.GetCheckpointResponse(available=True, tensor=checkpoint)
 
 
 def serve(node_id: str, address: str, model_name: str = "gpt2", simulated_scale: float = 1.0) -> grpc.Server:

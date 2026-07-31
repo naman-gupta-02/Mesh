@@ -16,6 +16,10 @@ message LoadShardRequest {
   // means this node holds the exit shard and should return its own output
   // directly instead of relaying downstream.
   string next_hop_address = 2;
+  // Testing knob: sleep this long at the start of each Forward call before
+  // computing, so a fault-injection harness has a deterministic window to
+  // kill the node mid-request. Zero in normal operation.
+  double artificial_delay_seconds = 3;
 }
 
 message LoadShardResponse {
@@ -59,6 +63,18 @@ message ForwardResponse {
   repeated StageTiming timings = 3;
 }
 
+message GetCheckpointRequest {
+  string job_id = 1;
+}
+
+message GetCheckpointResponse {
+  // False if this node never processed job_id (e.g. a different job, or a
+  // job that never reached it). The coordinator uses this to find how far
+  // a failed job's chain got before a downstream node died.
+  bool available = 1;
+  bytes tensor = 2;  // this node's own output for job_id -- the next hop's input
+}
+
 service NodeDaemon {
   rpc Benchmark(BenchmarkRequest) returns (BenchmarkResponse);
   rpc LoadShard(LoadShardRequest) returns (LoadShardResponse);
@@ -69,4 +85,8 @@ service NodeDaemon {
   // result once the whole chain has run.
   rpc Forward(ForwardRequest) returns (ForwardResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  // Fault recovery: returns this node's own cached output for a given job,
+  // so the coordinator can resume a broken chain from the last node that
+  // finished instead of restarting the whole job from scratch.
+  rpc GetCheckpoint(GetCheckpointRequest) returns (GetCheckpointResponse);
 }

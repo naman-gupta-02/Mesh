@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nmesh.proto\x12\x04mesh\"`\n\tShardSpec\x12\x13\n\x0blayer_start\x18\x01 \x01(\x05\x12\x11\n\tlayer_end\x18\x02 \x01(\x05\x12\x15\n\rinclude_embed\x18\x03 \x01(\x08\x12\x14\n\x0cinclude_head\x18\x04 \x01(\x08\"L\n\x10LoadShardRequest\x12\x1e\n\x05shard\x18\x01 \x01(\x0b\x32\x0f.mesh.ShardSpec\x12\x18\n\x10next_hop_address\x18\x02 \x01(\t\".\n\x11LoadShardResponse\x12\n\n\x02ok\x18\x01 \x01(\x08\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"\x12\n\x10\x42\x65nchmarkRequest\"8\n\x11\x42\x65nchmarkResponse\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x12\n\nthroughput\x18\x02 \x01(\x01\"\x12\n\x10HeartbeatRequest\"3\n\x11HeartbeatResponse\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\r\n\x05\x61live\x18\x02 \x01(\x08\"7\n\x0bStageTiming\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x17\n\x0f\x65lapsed_seconds\x18\x02 \x01(\x01\"0\n\x0e\x46orwardRequest\x12\x0e\n\x06job_id\x18\x01 \x01(\t\x12\x0e\n\x06tensor\x18\x02 \x01(\x0c\"U\n\x0f\x46orwardResponse\x12\x0e\n\x06job_id\x18\x01 \x01(\t\x12\x0e\n\x06logits\x18\x02 \x01(\x0c\x12\"\n\x07timings\x18\x03 \x03(\x0b\x32\x11.mesh.StageTiming2\xfe\x01\n\nNodeDaemon\x12<\n\tBenchmark\x12\x16.mesh.BenchmarkRequest\x1a\x17.mesh.BenchmarkResponse\x12<\n\tLoadShard\x12\x16.mesh.LoadShardRequest\x1a\x17.mesh.LoadShardResponse\x12\x36\n\x07\x46orward\x12\x14.mesh.ForwardRequest\x1a\x15.mesh.ForwardResponse\x12<\n\tHeartbeat\x12\x16.mesh.HeartbeatRequest\x1a\x17.mesh.HeartbeatResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nmesh.proto\x12\x04mesh\"`\n\tShardSpec\x12\x13\n\x0blayer_start\x18\x01 \x01(\x05\x12\x11\n\tlayer_end\x18\x02 \x01(\x05\x12\x15\n\rinclude_embed\x18\x03 \x01(\x08\x12\x14\n\x0cinclude_head\x18\x04 \x01(\x08\"n\n\x10LoadShardRequest\x12\x1e\n\x05shard\x18\x01 \x01(\x0b\x32\x0f.mesh.ShardSpec\x12\x18\n\x10next_hop_address\x18\x02 \x01(\t\x12 \n\x18\x61rtificial_delay_seconds\x18\x03 \x01(\x01\".\n\x11LoadShardResponse\x12\n\n\x02ok\x18\x01 \x01(\x08\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"\x12\n\x10\x42\x65nchmarkRequest\"8\n\x11\x42\x65nchmarkResponse\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x12\n\nthroughput\x18\x02 \x01(\x01\"\x12\n\x10HeartbeatRequest\"3\n\x11HeartbeatResponse\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\r\n\x05\x61live\x18\x02 \x01(\x08\"7\n\x0bStageTiming\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x17\n\x0f\x65lapsed_seconds\x18\x02 \x01(\x01\"0\n\x0e\x46orwardRequest\x12\x0e\n\x06job_id\x18\x01 \x01(\t\x12\x0e\n\x06tensor\x18\x02 \x01(\x0c\"U\n\x0f\x46orwardResponse\x12\x0e\n\x06job_id\x18\x01 \x01(\t\x12\x0e\n\x06logits\x18\x02 \x01(\x0c\x12\"\n\x07timings\x18\x03 \x03(\x0b\x32\x11.mesh.StageTiming\"&\n\x14GetCheckpointRequest\x12\x0e\n\x06job_id\x18\x01 \x01(\t\":\n\x15GetCheckpointResponse\x12\x11\n\tavailable\x18\x01 \x01(\x08\x12\x0e\n\x06tensor\x18\x02 \x01(\x0c\x32\xc8\x02\n\nNodeDaemon\x12<\n\tBenchmark\x12\x16.mesh.BenchmarkRequest\x1a\x17.mesh.BenchmarkResponse\x12<\n\tLoadShard\x12\x16.mesh.LoadShardRequest\x1a\x17.mesh.LoadShardResponse\x12\x36\n\x07\x46orward\x12\x14.mesh.ForwardRequest\x1a\x15.mesh.ForwardResponse\x12<\n\tHeartbeat\x12\x16.mesh.HeartbeatRequest\x1a\x17.mesh.HeartbeatResponse\x12H\n\rGetCheckpoint\x12\x1a.mesh.GetCheckpointRequest\x1a\x1b.mesh.GetCheckpointResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,23 +34,27 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_SHARDSPEC']._serialized_start=20
   _globals['_SHARDSPEC']._serialized_end=116
   _globals['_LOADSHARDREQUEST']._serialized_start=118
-  _globals['_LOADSHARDREQUEST']._serialized_end=194
-  _globals['_LOADSHARDRESPONSE']._serialized_start=196
-  _globals['_LOADSHARDRESPONSE']._serialized_end=242
-  _globals['_BENCHMARKREQUEST']._serialized_start=244
-  _globals['_BENCHMARKREQUEST']._serialized_end=262
-  _globals['_BENCHMARKRESPONSE']._serialized_start=264
-  _globals['_BENCHMARKRESPONSE']._serialized_end=320
-  _globals['_HEARTBEATREQUEST']._serialized_start=322
-  _globals['_HEARTBEATREQUEST']._serialized_end=340
-  _globals['_HEARTBEATRESPONSE']._serialized_start=342
-  _globals['_HEARTBEATRESPONSE']._serialized_end=393
-  _globals['_STAGETIMING']._serialized_start=395
-  _globals['_STAGETIMING']._serialized_end=450
-  _globals['_FORWARDREQUEST']._serialized_start=452
-  _globals['_FORWARDREQUEST']._serialized_end=500
-  _globals['_FORWARDRESPONSE']._serialized_start=502
-  _globals['_FORWARDRESPONSE']._serialized_end=587
-  _globals['_NODEDAEMON']._serialized_start=590
-  _globals['_NODEDAEMON']._serialized_end=844
+  _globals['_LOADSHARDREQUEST']._serialized_end=228
+  _globals['_LOADSHARDRESPONSE']._serialized_start=230
+  _globals['_LOADSHARDRESPONSE']._serialized_end=276
+  _globals['_BENCHMARKREQUEST']._serialized_start=278
+  _globals['_BENCHMARKREQUEST']._serialized_end=296
+  _globals['_BENCHMARKRESPONSE']._serialized_start=298
+  _globals['_BENCHMARKRESPONSE']._serialized_end=354
+  _globals['_HEARTBEATREQUEST']._serialized_start=356
+  _globals['_HEARTBEATREQUEST']._serialized_end=374
+  _globals['_HEARTBEATRESPONSE']._serialized_start=376
+  _globals['_HEARTBEATRESPONSE']._serialized_end=427
+  _globals['_STAGETIMING']._serialized_start=429
+  _globals['_STAGETIMING']._serialized_end=484
+  _globals['_FORWARDREQUEST']._serialized_start=486
+  _globals['_FORWARDREQUEST']._serialized_end=534
+  _globals['_FORWARDRESPONSE']._serialized_start=536
+  _globals['_FORWARDRESPONSE']._serialized_end=621
+  _globals['_GETCHECKPOINTREQUEST']._serialized_start=623
+  _globals['_GETCHECKPOINTREQUEST']._serialized_end=661
+  _globals['_GETCHECKPOINTRESPONSE']._serialized_start=663
+  _globals['_GETCHECKPOINTRESPONSE']._serialized_end=721
+  _globals['_NODEDAEMON']._serialized_start=724
+  _globals['_NODEDAEMON']._serialized_end=1052
 # @@protoc_insertion_point(module_scope)

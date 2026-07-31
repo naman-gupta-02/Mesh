@@ -54,6 +54,11 @@ class NodeDaemonStub:
                 request_serializer=mesh__pb2.HeartbeatRequest.SerializeToString,
                 response_deserializer=mesh__pb2.HeartbeatResponse.FromString,
                 _registered_method=True)
+        self.GetCheckpoint = channel.unary_unary(
+                '/mesh.NodeDaemon/GetCheckpoint',
+                request_serializer=mesh__pb2.GetCheckpointRequest.SerializeToString,
+                response_deserializer=mesh__pb2.GetCheckpointResponse.FromString,
+                _registered_method=True)
 
 
 class NodeDaemonServicer:
@@ -88,6 +93,15 @@ class NodeDaemonServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetCheckpoint(self, request, context):
+        """Fault recovery: returns this node's own cached output for a given job,
+        so the coordinator can resume a broken chain from the last node that
+        finished instead of restarting the whole job from scratch.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_NodeDaemonServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -110,6 +124,11 @@ def add_NodeDaemonServicer_to_server(servicer, server):
                     servicer.Heartbeat,
                     request_deserializer=mesh__pb2.HeartbeatRequest.FromString,
                     response_serializer=mesh__pb2.HeartbeatResponse.SerializeToString,
+            ),
+            'GetCheckpoint': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCheckpoint,
+                    request_deserializer=mesh__pb2.GetCheckpointRequest.FromString,
+                    response_serializer=mesh__pb2.GetCheckpointResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -220,6 +239,33 @@ class NodeDaemon:
             '/mesh.NodeDaemon/Heartbeat',
             mesh__pb2.HeartbeatRequest.SerializeToString,
             mesh__pb2.HeartbeatResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCheckpoint(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mesh.NodeDaemon/GetCheckpoint',
+            mesh__pb2.GetCheckpointRequest.SerializeToString,
+            mesh__pb2.GetCheckpointResponse.FromString,
             options,
             channel_credentials,
             insecure,
