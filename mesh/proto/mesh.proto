@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package mesh;
+
+// A contiguous range of transformer layers a node is responsible for.
+message ShardSpec {
+  int32 layer_start = 1;
+  int32 layer_end = 2;
+  bool include_embed = 3;  // true only for the entry (first) shard
+  bool include_head = 4;   // true only for the exit (last) shard
+}
+
+message LoadShardRequest {
+  ShardSpec shard = 1;
+  // Address (host:port) of the next node in the pipeline. Empty string
+  // means this node holds the exit shard and should return its own output
+  // directly instead of relaying downstream.
+  string next_hop_address = 2;
+}
+
+message LoadShardResponse {
+  bool ok = 1;
+  string error = 2;
+}
+
+message BenchmarkRequest {}
+
+message BenchmarkResponse {
+  string node_id = 1;
+  double throughput = 2;  // relative units (fake GFLOPS); higher = faster
+}
+
+message HeartbeatRequest {}
+
+message HeartbeatResponse {
+  string node_id = 1;
+  bool alive = 2;
+}
+
+message StageTiming {
+  string node_id = 1;
+  double elapsed_seconds = 2;
+}
+
+message ForwardRequest {
+  string job_id = 1;
+  // torch.save()'d tensor: input_ids on the entry shard, hidden_states on
+  // every other shard.
+  bytes tensor = 2;
+}
+
+message ForwardResponse {
+  string job_id = 1;
+  bytes logits = 2;  // torch.save()'d final logits tensor
+  // One entry per hop the request passed through, entry shard first. Each
+  // node prepends its own timing before returning to its caller, so the
+  // full per-stage timing history is available at the top of the chain
+  // without a separate telemetry channel.
+  repeated StageTiming timings = 3;
+}
+
+service NodeDaemon {
+  rpc Benchmark(BenchmarkRequest) returns (BenchmarkResponse);
+  rpc LoadShard(LoadShardRequest) returns (LoadShardResponse);
+  // Synchronous recursive relay: a node computes its shard, then (unless it
+  // holds the exit shard) calls Forward on its next hop and returns
+  // whatever comes back, with its own timing prepended. The coordinator's
+  // single call to the entry node's Forward therefore returns the final
+  // result once the whole chain has run.
+  rpc Forward(ForwardRequest) returns (ForwardResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}

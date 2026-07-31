@@ -8,9 +8,14 @@ version = "0.1.0"
 description = "Distributed inference across heterogeneous volunteer devices"
 requires-python = ">=3.10"
 dependencies = [
-    "torch",
-    "transformers",
+    # mesh/model_shard.py calls GPT2Block.forward directly (bypassing
+    # GPT2Model), which is private API that transformers has broken across
+    # major versions (5.x changed the attention call signature). Pinned
+    # until model_shard.py is made version-tolerant.
+    "torch==2.7.0",
+    "transformers==4.52.4",
+    "grpcio",
 ]
 
 [tool.setuptools]
-packages = ["mesh"]
+packages = ["mesh", "mesh.proto"]
