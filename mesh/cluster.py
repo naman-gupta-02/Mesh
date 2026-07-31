@@ -19,11 +19,13 @@ from dataclasses import dataclass
 import grpc
 import torch
 
-from mesh.coordinator import ShardAssignment
+from mesh.coordinator import ShardAssignment, plan_partition
 from mesh.net_coordinator import (
     JobResult,
     NodeHandle,
+    benchmark_nodes,
     find_last_checkpoint,
+    load_shards,
     recover_job,
     replace_node_in_assignments,
     rewire_next_hop,
@@ -53,6 +55,12 @@ class Cluster:
         self.heartbeat_interval = heartbeat_interval
         self.miss_threshold = miss_threshold
         self._status: dict[str, _NodeStatus] = {n.node_id: _NodeStatus() for n in primary_nodes}
+        self._num_layers = max(a.layer_end for a in self.assignments)
+        # Set after a recovery: the standby that took over a dead node's
+        # shard inherited its *old* layer range, which may not suit the
+        # standby's actual throughput. True as soon as the topology
+        # changes, cleared once a full re-plan has run.
+        self._needs_rebalance = False
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
@@ -61,6 +69,11 @@ class Cluster:
     def stop(self) -> None:
         self._stop.set()
         self._thread.join(timeout=5)
+
+    @property
+    def needs_rebalance(self) -> bool:
+        with self._lock:
+            return self._needs_rebalance
 
     def is_alive(self, node_id: str) -> bool:
         with self._lock:
@@ -118,8 +131,37 @@ class Cluster:
             artificial_delay_seconds=delay_seconds,
         )
 
+    def rebalance(self) -> None:
+        """Re-profiles every currently active node and recomputes the
+        partition from scratch, rather than leaving a standby stuck with
+        whatever layer range the node it replaced happened to hold.
+
+        Deliberately not called during recovery itself -- recovery stays
+        fast and correctness-first (matching the plan's stated v1
+        priority); rebalancing is heavier (a fresh benchmark + LoadShard
+        round trip to every active node) and can afford to happen lazily,
+        on the next job submission after a topology change.
+        """
+        with self._lock:
+            active_nodes = [self._nodes_by_id[nid] for nid, status in self._status.items() if status.alive]
+        if not active_nodes:
+            raise RuntimeError("no active nodes to rebalance across")
+
+        profiles = benchmark_nodes(active_nodes)
+        new_assignments = plan_partition(self._num_layers, profiles)
+        load_shards(active_nodes, new_assignments)
+
+        with self._lock:
+            self.assignments = new_assignments
+            self._needs_rebalance = False
+
     def submit(self, input_ids: torch.Tensor, job_id: str | None = None) -> JobResult:
         job_id = job_id or str(uuid.uuid4())
+        with self._lock:
+            needs_rebalance = self._needs_rebalance
+        if needs_rebalance:
+            self.rebalance()
+
         with self._lock:
             entry_node = self._nodes_by_id[self.assignments[0].node_id]
         try:
@@ -149,6 +191,7 @@ class Cluster:
             self._status[standby.node_id] = _NodeStatus()
             if failed_node_id in self._status:
                 self._status[failed_node_id].alive = False
+            self._needs_rebalance = True
             healed_assignments = self.assignments
             upstream_node = (
                 self._nodes_by_id[healed_assignments[failed_index - 1].node_id] if failed_index > 0 else None

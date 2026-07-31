@@ -205,12 +205,55 @@ pytest tests/
 job 3's stage timings and `cluster.assignments` no longer reference the
 dead node.
 
+## Phase 3.6 — rebalancing after a topology change
+
+Phase 3.5's healing keeps the pipeline correct by giving the standby the
+dead node's *exact* old layer range — fast, but that range was sized for
+the dead node's throughput, not the standby's. A spare that's 4x faster
+than what it replaced would sit underused forever under healing alone.
+
+- `Cluster.rebalance()` — re-profiles every currently-active node
+  (`benchmark_nodes()`) and recomputes the partition from scratch
+  (`plan_partition()`), then reissues `LoadShard` to all of them
+  (`load_shards()`). Deliberately *not* called during recovery itself —
+  recovery stays fast and correctness-first; a full re-plan is heavier and
+  can wait.
+- `Cluster.submit()` now checks a `needs_rebalance` flag (set whenever
+  `_recover_and_heal` changes the topology) and calls `rebalance()` first
+  if it's set, before submitting the job — matching the original plan's
+  "you don't need to reshard immediately, but the next job submission
+  should re-profile and re-plan."
+
+### Run it
+
+```
+python3 scripts/run_rebalance_demo.py
+```
+
+Same kill-mid-request scenario as Phase 3.5, but the standby is configured
+much faster than the node it replaces. Job 2's healed plan gives it the
+dead node's old (small) share; job 3 shows `Cluster.submit()` rebalancing
+first, and the standby's layer count grows to match its own measured
+throughput — in one run, from 2 layers (inherited) to 6 layers (rebalanced,
+and promoted to the new entry shard).
+
+### Test
+
+```
+pytest tests/
+```
+
+`tests/test_rebalance.py` asserts `needs_rebalance` flips true after a
+recovery and false again after the next `submit()`, that partition
+invariants (contiguous, covers all layers) still hold post-rebalance, and
+that the standby ends up with strictly more layers than the naive healed
+assignment gave it.
+
 ## What's next (not built yet)
 
 Per the original build order: run on real separate hardware (not just
 localhost — architecture doesn't change, just point `--address` at a LAN
-IP), then a closed campus beta. Also pending: re-profiling nodes after a
-topology change (today's healing keeps the original partition's layer
-*ranges*, it doesn't recompute them for the replacement node's actual
-throughput), sandboxed node daemons, signed/checksummed weight
-distribution, and latency-aware scheduling.
+IP), then a closed campus beta. Also pending: sandboxed node daemons,
+signed/checksummed weight distribution, and latency-aware scheduling
+(preferring low-latency hops when chaining nodes — meaningful once nodes
+are on real, distinct networks instead of all being localhost).
