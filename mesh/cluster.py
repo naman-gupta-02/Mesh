@@ -10,10 +10,17 @@ Cluster closes that loop: after a recovery it also updates the assignment
 table and rewires the surviving upstream node, so subsequent jobs route
 through the standby directly, and it runs a background heartbeat loop to
 track node liveness independent of job submission.
+
+Also tracks enough state (event log, job counters, per-node role) for
+mesh/dashboard_server.py to expose a live view of what the cluster is
+doing, and supports onboarding a brand new device mid-session via
+add_device() -- the "volunteer's laptop joins partway through" case.
 """
 
 import threading
+import time
 import uuid
+from collections import deque
 from dataclasses import dataclass
 
 import grpc
@@ -48,8 +55,10 @@ class Cluster:
         standby_nodes: list[NodeHandle],
         heartbeat_interval: float = 2.0,
         miss_threshold: int = 2,
+        model_name: str = "gpt2",
     ):
         self.assignments = list(assignments)
+        self.model_name = model_name
         self._nodes_by_id: dict[str, NodeHandle] = {n.node_id: n for n in primary_nodes}
         self._standby_pool: list[NodeHandle] = list(standby_nodes)
         self.heartbeat_interval = heartbeat_interval
@@ -61,14 +70,31 @@ class Cluster:
         # standby's actual throughput. True as soon as the topology
         # changes, cleared once a full re-plan has run.
         self._needs_rebalance = False
+        self._jobs_submitted = 0
+        self._jobs_recovered = 0
+        self._last_job_ms: float | None = None
+        # (timestamp, message) pairs, newest last. deque.append is atomic
+        # under the GIL, so this is safe to touch without self._lock.
+        self._events: deque[tuple[float, str]] = deque(maxlen=200)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
         self._thread.start()
+        self._log(f"cluster started: {len(primary_nodes)} primary, {len(standby_nodes)} standby, model={model_name}")
 
     def stop(self) -> None:
         self._stop.set()
         self._thread.join(timeout=5)
+
+    def _log(self, message: str) -> None:
+        self._events.append((time.time(), message))
+
+    def log(self, message: str) -> None:
+        """Public hook for callers (dashboard server, demo scripts) to add
+        their own annotations to the event feed -- e.g. "kill requested via
+        dashboard" -- alongside the cluster's own internal events.
+        """
+        self._log(message)
 
     @property
     def needs_rebalance(self) -> bool:
@@ -103,8 +129,11 @@ class Cluster:
         except grpc.RpcError:
             with self._lock:
                 status.consecutive_misses += 1
-                if status.consecutive_misses >= self.miss_threshold:
+                went_dead = status.consecutive_misses >= self.miss_threshold and status.alive
+                if went_dead:
                     status.alive = False
+            if went_dead:
+                self._log(f"heartbeat lost: {node_id} marked dead")
 
     def inject_delay(self, node_id: str, delay_seconds: float) -> None:
         """Testing hook: makes `node_id` sleep before computing its next
@@ -131,6 +160,37 @@ class Cluster:
             artificial_delay_seconds=delay_seconds,
         )
 
+    def add_device(self, node: NodeHandle, join_as: str = "active", timeout: float = 30.0) -> None:
+        """Onboards a new node into a running cluster -- the "new volunteer
+        laptop joins mid-session" case from the plan. The node's own daemon
+        must already be running and reachable at node.address (see
+        mesh/daemon.py) before calling this.
+
+        join_as="active" (default): folds the node into the active pool and
+        flags a rebalance, so the next submit() re-profiles everyone
+        including the newcomer and re-partitions across all of them --
+        "you don't need to reshard immediately, but the next job
+        submission should re-profile and re-plan."
+        join_as="standby": holds it in reserve for future recover_job()
+        calls instead, without touching the current partition.
+        """
+        if join_as not in ("active", "standby"):
+            raise ValueError(f"join_as must be 'active' or 'standby', got {join_as!r}")
+
+        self._log(f"device joining: {node.node_id} ({join_as}) at {node.address}")
+        channel = grpc.insecure_channel(node.address)
+        grpc.channel_ready_future(channel).result(timeout=timeout)
+        mesh_pb2_grpc.NodeDaemonStub(channel).Heartbeat(mesh_pb2.HeartbeatRequest(), timeout=timeout)
+
+        with self._lock:
+            if join_as == "standby":
+                self._standby_pool.append(node)
+            else:
+                self._nodes_by_id[node.node_id] = node
+                self._status[node.node_id] = _NodeStatus()
+                self._needs_rebalance = True
+        self._log(f"device joined: {node.node_id} ({join_as})")
+
     def rebalance(self) -> None:
         """Re-profiles every currently active node and recomputes the
         partition from scratch, rather than leaving a standby stuck with
@@ -147,6 +207,7 @@ class Cluster:
         if not active_nodes:
             raise RuntimeError("no active nodes to rebalance across")
 
+        self._log(f"rebalancing: re-profiling {len(active_nodes)} active nodes")
         profiles = benchmark_nodes(active_nodes)
         new_assignments = plan_partition(self._num_layers, profiles)
         load_shards(active_nodes, new_assignments)
@@ -154,6 +215,8 @@ class Cluster:
         with self._lock:
             self.assignments = new_assignments
             self._needs_rebalance = False
+        summary = ", ".join(f"{a.node_id}={a.num_layers}L" for a in new_assignments)
+        self._log(f"rebalanced: {summary}")
 
     def submit(self, input_ids: torch.Tensor, job_id: str | None = None) -> JobResult:
         job_id = job_id or str(uuid.uuid4())
@@ -164,10 +227,26 @@ class Cluster:
 
         with self._lock:
             entry_node = self._nodes_by_id[self.assignments[0].node_id]
+        start = time.perf_counter()
         try:
-            return submit_job(entry_node, job_id, input_ids)
+            result = submit_job(entry_node, job_id, input_ids)
         except grpc.RpcError:
-            return self._recover_and_heal(job_id, input_ids)
+            self._log(f"job {job_id[:8]} failed mid-flight, recovering...")
+            result = self._recover_and_heal(job_id, input_ids)
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            with self._lock:
+                self._jobs_submitted += 1
+                self._jobs_recovered += 1
+                self._last_job_ms = elapsed_ms
+            self._log(f"job {job_id[:8]} recovered in {elapsed_ms:.0f}ms")
+            return result
+
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        with self._lock:
+            self._jobs_submitted += 1
+            self._last_job_ms = elapsed_ms
+        self._log(f"job {job_id[:8]} completed in {elapsed_ms:.0f}ms")
+        return result
 
     def _recover_and_heal(self, job_id: str, input_ids: torch.Tensor) -> JobResult:
         with self._lock:
@@ -183,6 +262,7 @@ class Cluster:
             raise RuntimeError(f"job {job_id}: submit_job failed but the chain looks complete")
 
         failed_node_id = assignments[failed_index].node_id
+        self._log(f"recovering: reassigning {failed_node_id}'s shard to {standby.node_id}")
         result = recover_job(all_known, assignments, standby, job_id, input_ids)
 
         with self._lock:
@@ -206,4 +286,49 @@ class Cluster:
                 next_hop_address=standby.address,
             )
 
+        self._log(f"recovered: {standby.node_id} now serving {failed_node_id}'s former shard")
         return result
+
+    def status(self) -> dict:
+        """A JSON-serializable snapshot for mesh/dashboard_server.py."""
+        with self._lock:
+            entry_id = self.assignments[0].node_id if self.assignments else None
+            exit_id = self.assignments[-1].node_id if self.assignments else None
+            assignment_by_node = {a.node_id: a for a in self.assignments}
+
+            nodes = []
+            for node_id, node in self._nodes_by_id.items():
+                node_status = self._status[node_id]
+                assignment = assignment_by_node.get(node_id)
+                role = "idle"
+                if assignment is not None:
+                    role = "entry" if node_id == entry_id else ("exit" if node_id == exit_id else "primary")
+                nodes.append(
+                    {
+                        "node_id": node_id,
+                        "address": node.address,
+                        "alive": node_status.alive,
+                        "role": role,
+                        "layer_start": assignment.layer_start if assignment else None,
+                        "layer_end": assignment.layer_end if assignment else None,
+                        "num_layers": assignment.num_layers if assignment else 0,
+                    }
+                )
+            # Stable pipeline order for the frontend, dead nodes trail at the end.
+            order = {node_id: i for i, node_id in enumerate(a.node_id for a in self.assignments)}
+            nodes.sort(key=lambda n: order.get(n["node_id"], len(order)))
+
+            standby_ids = [n.node_id for n in self._standby_pool]
+            events = [{"time": t, "message": m} for t, m in list(self._events)[-60:]]
+
+            return {
+                "model_name": self.model_name,
+                "num_layers": self._num_layers,
+                "nodes": nodes,
+                "standby_ids": standby_ids,
+                "needs_rebalance": self._needs_rebalance,
+                "jobs_submitted": self._jobs_submitted,
+                "jobs_recovered": self._jobs_recovered,
+                "last_job_ms": self._last_job_ms,
+                "events": events,
+            }

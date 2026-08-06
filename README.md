@@ -249,11 +249,80 @@ invariants (contiguous, covers all layers) still hold post-rebalance, and
 that the standby ends up with strictly more layers than the naive healed
 assignment gave it.
 
+## Phase 4 — live dashboard + adding a device
+
+A browser view of the running cluster, plus a real way to onboard a new
+device into a session that's already going — not just at startup.
+
+- `mesh/rig.py` — spawns/kills node-daemon subprocesses and hands out
+  ports. Not part of the "real" architecture (a real coordinator can't kill
+  someone's laptop) — it exists so the dashboard's buttons have a live demo
+  process to act on.
+- `Cluster` gained an event log (`Cluster.log()`, capped at 200 entries),
+  job counters, and `status()` — a JSON-serializable snapshot (model,
+  per-node role/liveness/layer-range, standby pool, job/recovery counts,
+  recent events) that's the dashboard's entire data source.
+- `Cluster.add_device(node, join_as="active"|"standby")` — the "a
+  volunteer's laptop joins mid-session" feature. Waits for the node's own
+  daemon to be reachable, then either folds it into the active pool and
+  flags a rebalance (so the *next* job re-profiles everyone including the
+  newcomer — same lazy pattern as Phase 3.6), or holds it in reserve as a
+  standby without touching the current partition.
+- `mesh/dashboard_server.py` — stdlib-only HTTP server (no new
+  dependency): `GET /api/status` for the JSON snapshot, `GET /` serves
+  `mesh/dashboard.html`, `POST /api/devices` spawns a new local daemon and
+  calls `add_device()` on it, `POST /api/devices/<id>/kill` kills a node's
+  process to trigger the fault-tolerance path live.
+- `mesh/dashboard.html` — single self-contained page (no CDN, no
+  frameworks), polling `/api/status` every second: an animated pipeline
+  view (node cards, flowing-dot connectors, a throughput-proportional
+  layer-distribution bar), live stat tiles, an "Add a device" form with a
+  copy-pasteable real-world CLI snippet, per-node kill buttons, and a
+  color-coded, auto-scrolling event log. Colors follow the dataviz skill's
+  palette: status colors (good/critical) for node liveness, a fixed
+  8-slot categorical palette (hashed per `node_id`) for identity, both
+  light- and dark-mode selected (not just an OS-setting flip).
+
+### Run it
+
+```
+python3 scripts/run_dashboard_demo.py
+```
+
+Starts 4 primary + 2 standby daemons, opens `http://127.0.0.1:8080` in your
+browser, and keeps submitting a real job every 2.5s in the background so
+the dashboard stays alive with real activity — not canned data. From the
+page you can add a brand-new device (spawns a fresh local daemon and
+onboards it live, triggering a real rebalance on the next job) or kill an
+existing one (exercises the exact same recovery + rebalance path as the
+Phase 3 demos, just triggered from a button instead of a script). Ctrl+C
+to stop; it tears down every daemon it spawned.
+
+Note: on a single dev machine, 6+ daemons plus the job loop all compete for
+one CPU. `heartbeat_interval`/`miss_threshold` are looser here than in the
+fault-tolerance tests, and daemon gRPC servers use more worker threads
+(`mesh/daemon.py`'s `serve()`), so a busy `Forward` call doesn't starve a
+concurrent `Heartbeat` and read as a false node death. Real, separate
+devices wouldn't need this slack.
+
+### Test
+
+```
+pytest tests/
+```
+
+`tests/test_cluster_status.py` covers `status()`'s shape and both
+`add_device()` join modes. `tests/test_dashboard_server.py` drives the
+actual HTTP endpoints (`urllib`, no new dependency) against a real running
+cluster: adding a device, killing one, and the error paths (missing
+`node_id`, duplicate device, unknown node).
+
 ## What's next (not built yet)
 
 Per the original build order: run on real separate hardware (not just
 localhost — architecture doesn't change, just point `--address` at a LAN
-IP), then a closed campus beta. Also pending: sandboxed node daemons,
-signed/checksummed weight distribution, and latency-aware scheduling
-(preferring low-latency hops when chaining nodes — meaningful once nodes
-are on real, distinct networks instead of all being localhost).
+IP for a daemon, or a real IP into `add_device()`), then a closed campus
+beta. Also pending: sandboxed node daemons, signed/checksummed weight
+distribution, and latency-aware scheduling (preferring low-latency hops
+when chaining nodes — meaningful once nodes are on real, distinct networks
+instead of all being localhost).

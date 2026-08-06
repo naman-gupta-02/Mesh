@@ -114,7 +114,10 @@ class NodeDaemonServicer(mesh_pb2_grpc.NodeDaemonServicer):
 
 
 def serve(node_id: str, address: str, model_name: str = "gpt2", simulated_scale: float = 1.0) -> grpc.Server:
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
+    # A busy Forward call shouldn't starve Heartbeat/GetCheckpoint of a
+    # worker thread -- on a loaded single dev machine (many daemons sharing
+    # one CPU) a too-small pool here reads as a false-positive node death.
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=8))
     mesh_pb2_grpc.add_NodeDaemonServicer_to_server(
         NodeDaemonServicer(node_id, model_name=model_name, simulated_scale=simulated_scale), server
     )
