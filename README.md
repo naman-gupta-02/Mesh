@@ -405,6 +405,9 @@ tabs instead of one long scroll:
 - **Activity** — the event log, with filter chips (jobs / recoveries /
   rebalance / devices / failures / playground) — moved off the main view
   so it's there when you want it instead of dominating the page.
+- **Model** (added in Phase 6, below) — switch the whole cluster to a
+  different model: a curated dropdown, a free-text Hugging Face Hub ID
+  field, or upload your own checkpoint.
 
 A small always-visible ticker under the header shows the latest event
 regardless of which tab is open.
@@ -430,6 +433,85 @@ actually loads it, so this doesn't download anything extra).
 `tests/test_dashboard_server.py` gained coverage for `mode="connect"`
 (onboarding a daemon spawned completely outside the dashboard's own `Rig`)
 and the SSE streaming endpoint.
+
+## Phase 6 — picking a model from the dashboard (curated, custom, or your own)
+
+Phase 5 added `--model` as a startup flag. This makes it a live control:
+pick from a short list, type any Hugging Face Hub identifier, or upload
+your own GPT-2-format checkpoint — all from the Model tab, no restart.
+
+There's no per-daemon "reload with different weights" RPC — each daemon's
+model is fixed by its `--model` flag at process start (see
+`mesh/daemon.py`). So switching models means rebuilding the whole cluster:
+tear down every locally-spawned daemon, respawn the same topology under
+the new model, and re-run profile → partition → load-shards from scratch.
+Devices connected via `mode="connect"` (real external machines, not
+managed by the dashboard's `Rig`) don't survive this — their owners need
+to restart their own daemon with a matching `--model` and reconnect.
+
+- `mesh/dashboard_server.py`'s `ClusterHolder` — request handlers close
+  over this mutable holder instead of a fixed `Cluster` object, so
+  `switch_model()` can swap `holder.cluster` out from under them mid-session.
+  `holder.switch_status` (`idle` / `switching` / `error`) gates every other
+  interactive endpoint (`add_device`, `kill`, `generate/stream`) — they
+  return `503` while a switch is in flight rather than racing it.
+- `switch_model()` validates the new model's identifier first
+  (`model_layer_count()` — a fast, config-only fetch) *before* tearing
+  anything down, so a typo'd or nonexistent model name fails clean with
+  the working cluster untouched. If something fails *after* teardown
+  starts (a daemon that won't start, an OOM loading a huge model), there's
+  no rollback — `holder.cluster` becomes `None` and the script needs a
+  restart. That's a deliberate scope cut, not an oversight: blue/green
+  (keep the old cluster alive until the new one proves out) would double
+  the demo's already-heavy resource usage on one dev machine, and
+  `mesh/rig.py`'s `Rig.processes` dict is keyed by `node_id` — the same
+  IDs get reused across old/new attempts, which would collide with a
+  blue/green approach anyway.
+- **A real validation gap, found and fixed while building this**:
+  `GPT2Config.from_pretrained()` on a local directory that exists but has
+  no `config.json` doesn't raise — it silently returns a *default*
+  GPT2Config. Caught via the upload endpoint accepting a directory
+  containing an unrelated file as a "valid" model. `model_layer_count()`
+  now explicitly checks for `config.json` on any local-path argument
+  before deferring to `transformers`, since it's the shared validation
+  gate for every switch (curated, Hub ID, *and* upload).
+- Uploads go through a minimal hand-rolled `multipart/form-data` parser
+  (`_parse_multipart()`) — stdlib's `cgi` module, the traditional way to
+  do this, is deprecated since 3.11 and removed in 3.13. Saved under
+  `~/.cache/mesh/uploaded_models/<name>/`, validated the same way as any
+  other switch target, and only usable by locally-spawned ("simulate
+  here") devices — a real connected device needs the same files placed
+  locally on its own machine.
+
+### Run it
+
+```
+python3 scripts/run_dashboard_demo.py
+```
+
+Model tab → pick `distilgpt2` from the dropdown (or type any Hub ID, or
+upload your own) → "Switch to this model". Watch the header badge and the
+Activity tab for `tearing down cluster...` → `model switched to
+'distilgpt2'`. Verified live end to end, including: a real `gpt2` →
+`distilgpt2` → `gpt2` round trip (12 layers → 6 → 12, confirmed via
+`/api/status`), the bad-model-name safety net (cluster survives, clear
+error shown), and both upload paths (a minimal valid `config.json`
+accepted and immediately selectable; an incomplete upload rejected with
+its directory cleaned up).
+
+### Test
+
+```
+pytest tests/
+```
+
+`tests/test_model_switching.py`: `model_layer_count()`'s incomplete-local
+-directory guard, the multipart parser against content that deliberately
+contains raw `\r\n` bytes (to catch exactly the over-stripping bug a naive
+`bytes.strip()` would introduce), the switch endpoint's pre-teardown
+validation and concurrent-switch rejection, a full real
+`gpt2` → `distilgpt2` rebuild verified via the HTTP API, and both upload
+outcomes.
 
 ## What's next (not built yet)
 

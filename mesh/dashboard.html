@@ -91,6 +91,29 @@
   }
   .badge.rebalance.visible { display: inline-flex; animation: pulseBadge 1.6s ease-in-out infinite; }
   @keyframes pulseBadge { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+  .badge.switching {
+    color: var(--status-warning); border-color: color-mix(in srgb, var(--status-warning) 45%, transparent);
+    display: none;
+  }
+  .badge.switching.visible { display: inline-flex; animation: pulseBadge 1.6s ease-in-out infinite; }
+
+  .switch-banner {
+    font-size: 12.5px; font-weight: 700; padding: 6px 13px; border-radius: 999px;
+    display: none; align-items: center; gap: 6px; margin-left: 10px;
+  }
+  .switch-banner.visible { display: inline-flex; }
+  .switch-banner.switching {
+    color: var(--status-warning); background: color-mix(in srgb, var(--status-warning) 14%, transparent);
+    animation: pulseBadge 1.6s ease-in-out infinite;
+  }
+  .switch-banner.error { color: var(--status-critical); background: color-mix(in srgb, var(--status-critical) 14%, transparent); }
+
+  .chip-btn {
+    font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--series-1); cursor: pointer;
+    transition: background .15s ease;
+  }
+  .chip-btn:hover { background: color-mix(in srgb, var(--series-1) 12%, transparent); }
 
   .top-actions { display: flex; align-items: center; gap: 8px; }
   button.icon-btn {
@@ -276,6 +299,13 @@
   }
   .add-steps a { color: var(--series-1); font-weight: 600; text-decoration: none; }
   .add-steps a:hover { text-decoration: underline; }
+  .help-text2 {
+    font-size: 12px; color: var(--text-muted); line-height: 1.6; margin: -6px 0 14px;
+  }
+  .help-text2 code {
+    font-family: ui-monospace, "SF Mono", monospace; font-size: 11px;
+    background: var(--surface-2); padding: 1px 5px; border-radius: 4px;
+  }
 
   .snippet {
     background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
@@ -388,6 +418,7 @@
     <span class="tagline">distributed inference — live cluster view</span>
     <span class="badge model" id="model-badge">…</span>
     <span class="badge rebalance" id="rebalance-badge">⚠ rebalance pending</span>
+    <span class="badge switching" id="switching-badge">⏳ switching model…</span>
   </div>
   <div class="top-actions">
     <button class="icon-btn" id="theme-toggle" title="Toggle theme">🌗</button>
@@ -400,6 +431,7 @@
   <button data-tab="overview" class="active">Overview</button>
   <button data-tab="devices">Devices <span class="count" id="devices-count"></span></button>
   <button data-tab="playground">Playground</button>
+  <button data-tab="model">Model</button>
   <button data-tab="activity">Activity</button>
 </nav>
 
@@ -522,6 +554,67 @@
   </section>
 </section>
 
+<!-- ===================== MODEL ===================== -->
+<section class="tab-panel" id="tab-model">
+  <section class="panel">
+    <h2>Current model</h2>
+    <div style="display:flex; align-items:center; flex-wrap:wrap;">
+      <span class="badge model" id="model-current-badge">…</span>
+      <span class="switch-banner" id="switch-banner"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Choose from the list</h2>
+    <div class="add-form">
+      <div class="field wide">
+        <label for="model-curated-select">Model</label>
+        <select id="model-curated-select"></select>
+      </div>
+      <button class="primary" id="model-curated-switch" type="button">Switch to this model</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Custom Hugging Face model</h2>
+    <div class="add-form">
+      <div class="field wide">
+        <label for="model-hub-id">Model ID</label>
+        <input id="model-hub-id" placeholder="username/my-finetuned-gpt2">
+      </div>
+      <button class="primary" id="model-hub-switch" type="button">Switch to this model</button>
+    </div>
+    <div class="help-text2">Any GPT-2-architecture checkpoint on the Hugging Face Hub. Gated/private repos need an <code>HF_TOKEN</code> set in the daemon's environment.</div>
+  </section>
+
+  <section class="panel">
+    <h2>Upload your own</h2>
+    <div class="add-form">
+      <div class="field">
+        <label for="model-upload-name">Name</label>
+        <input id="model-upload-name" placeholder="my-custom-model">
+      </div>
+      <div class="field wide">
+        <label for="model-upload-files">Model files</label>
+        <input type="file" id="model-upload-files" multiple>
+      </div>
+      <button class="primary" id="model-upload-btn" type="button">Upload</button>
+    </div>
+    <div class="help-text2">
+      Select <code>config.json</code>, tokenizer files (<code>vocab.json</code>, <code>merges.txt</code>,
+      <code>tokenizer_config.json</code>), and the weights file (<code>pytorch_model.bin</code> or
+      <code>model.safetensors</code>) — ctrl/cmd-click to select several at once. Uploading only registers
+      the model; click it below (or "Switch to this model") to actually rebuild the cluster with it.
+      Only usable by devices simulated on this machine — a friend's real laptop needs the same files
+      locally and its own <code>--model</code> pointing at them.
+    </div>
+    <div class="form-msg" id="model-upload-msg"></div>
+    <div class="chips" id="uploaded-models-chips"><span class="empty-hint">none uploaded yet</span></div>
+  </section>
+
+  <div class="form-msg" id="model-msg"></div>
+</section>
+
 <!-- ===================== ACTIVITY ===================== -->
 <section class="tab-panel" id="tab-activity">
   <section class="panel">
@@ -624,9 +717,12 @@
 
   function render(data) {
     lastData = data;
-    document.getElementById('model-badge').textContent = `${data.model_name} · ${data.num_layers} layers`;
-    document.getElementById('pg-model-hint').textContent = `running ${data.model_name}`;
+    const modelLabel = data.model_name ? `${data.model_name} · ${data.num_layers} layers` : '(cluster unavailable)';
+    document.getElementById('model-badge').textContent = modelLabel;
+    document.getElementById('model-current-badge').textContent = modelLabel;
+    document.getElementById('pg-model-hint').textContent = data.model_name ? `running ${data.model_name}` : '';
     document.getElementById('rebalance-badge').classList.toggle('visible', !!data.needs_rebalance);
+    renderModelSwitchStatus(data.model_switch);
 
     const aliveNodes = data.nodes.filter(n => n.alive);
     const el = document.getElementById('stat-active');
@@ -797,7 +893,7 @@
         <div class="layers">${n.num_layers > 0 ? `layers [${n.layer_start}, ${n.layer_end})` : 'no shard'}</div>
         <div class="addr">${n.address}</div>
         <div class="swatch" style="background:${n.num_layers > 0 ? color : 'transparent'}"></div>
-        ${n.alive ? `<button class="kill-btn" data-kill="${n.node_id}">Kill (simulate crash)</button>` : `<div class="dead-tag">✕ unreachable</div>`}
+        ${n.alive ? `<button class="kill-btn" data-kill="${n.node_id}"${isSwitching() ? ' disabled' : ''}>Kill (simulate crash)</button>` : `<div class="dead-tag">✕ unreachable</div>`}
       `;
       grid.appendChild(card);
     });
@@ -908,6 +1004,128 @@ python -m mesh.daemon --node-id my-laptop --address 127.0.0.1:PORT --model ${mod
     });
   });
 
+  // ---------------- model tab ----------------
+  function isSwitching() {
+    return !!(lastData && lastData.model_switch && lastData.model_switch.status === 'switching');
+  }
+
+  function renderModelSwitchStatus(modelSwitch) {
+    const switching = modelSwitch && modelSwitch.status === 'switching';
+    const errored = modelSwitch && modelSwitch.status === 'error';
+    document.getElementById('switching-badge').classList.toggle('visible', switching);
+
+    const banner = document.getElementById('switch-banner');
+    banner.classList.remove('switching', 'error');
+    if (switching) {
+      banner.classList.add('visible', 'switching');
+      banner.textContent = `⏳ switching to ${modelSwitch.target} — this can take a while for a bigger model`;
+    } else if (errored) {
+      banner.classList.add('visible', 'error');
+      banner.textContent = `✕ switch to ${modelSwitch.target} failed: ${modelSwitch.error}`;
+    } else {
+      banner.classList.remove('visible');
+      banner.textContent = '';
+    }
+
+    ['model-curated-switch', 'model-hub-switch', 'model-upload-btn'].forEach(id => {
+      document.getElementById(id).disabled = switching;
+    });
+  }
+
+  async function fetchModels() {
+    try {
+      const res = await fetch('/api/models');
+      const data = await res.json();
+      const select = document.getElementById('model-curated-select');
+      const prevValue = select.value;
+      select.innerHTML = data.curated.map(m => `<option value="${m.id}">${m.label}</option>`).join('');
+      if (data.curated.some(m => m.id === prevValue)) select.value = prevValue;
+
+      const chipsWrap = document.getElementById('uploaded-models-chips');
+      if (!data.uploaded.length) {
+        chipsWrap.innerHTML = '<span class="empty-hint">none uploaded yet</span>';
+      } else {
+        chipsWrap.innerHTML = data.uploaded.map(m =>
+          `<button class="chip-btn" data-switch-to="${m.path}">${m.name}</button>`
+        ).join('');
+        chipsWrap.querySelectorAll('[data-switch-to]').forEach(btn => {
+          btn.addEventListener('click', () => switchModel(btn.dataset.switchTo));
+        });
+      }
+    } catch (err) {
+      // dashboard keeps polling /api/status regardless; this is best-effort
+    }
+  }
+
+  async function switchModel(modelName) {
+    const msg = document.getElementById('model-msg');
+    if (!modelName) {
+      msg.className = 'form-msg err';
+      msg.textContent = 'enter or choose a model first';
+      return;
+    }
+    msg.className = 'form-msg';
+    msg.textContent = `requesting switch to ${modelName}…`;
+    try {
+      const res = await fetch('/api/models/switch', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model_name: modelName }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        msg.className = 'form-msg ok';
+        msg.textContent = `switching to ${modelName} — watch the banner above or the Activity tab.`;
+      } else {
+        msg.className = 'form-msg err';
+        msg.textContent = data.error || 'switch failed to start';
+      }
+    } catch (err) {
+      msg.className = 'form-msg err';
+      msg.textContent = 'request failed: ' + err;
+    }
+  }
+
+  document.getElementById('model-curated-switch').addEventListener('click', () => {
+    switchModel(document.getElementById('model-curated-select').value);
+  });
+  document.getElementById('model-hub-switch').addEventListener('click', () => {
+    switchModel(document.getElementById('model-hub-id').value.trim());
+  });
+
+  document.getElementById('model-upload-btn').addEventListener('click', async () => {
+    const name = document.getElementById('model-upload-name').value.trim();
+    const files = document.getElementById('model-upload-files').files;
+    const msg = document.getElementById('model-upload-msg');
+    if (!name) { msg.className = 'form-msg err'; msg.textContent = 'give the model a name'; return; }
+    if (!files.length) { msg.className = 'form-msg err'; msg.textContent = 'select at least config.json and a weights file'; return; }
+
+    const formData = new FormData();
+    formData.append('model_name', name);
+    for (const file of files) formData.append('files', file, file.name);
+
+    msg.className = 'form-msg';
+    msg.textContent = `uploading ${files.length} file(s)…`;
+    try {
+      const res = await fetch('/api/models/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (res.ok) {
+        msg.className = 'form-msg ok';
+        msg.textContent = `uploaded as "${data.name}" — click it below to switch to it.`;
+        document.getElementById('model-upload-name').value = '';
+        document.getElementById('model-upload-files').value = '';
+        fetchModels();
+      } else {
+        msg.className = 'form-msg err';
+        msg.textContent = data.error || 'upload failed';
+      }
+    } catch (err) {
+      msg.className = 'form-msg err';
+      msg.textContent = 'upload failed: ' + err;
+    }
+  });
+
+  fetchModels();
+  document.querySelector('nav.tabs button[data-tab="model"]').addEventListener('click', fetchModels);
+
   // ---------------- playground ----------------
   const tempInput = document.getElementById('pg-temp');
   const tempValue = document.getElementById('pg-temp-value');
@@ -932,13 +1150,17 @@ python -m mesh.daemon --node-id my-laptop --address 127.0.0.1:PORT --model ${mod
   function askModel() {
     const prompt = document.getElementById('pg-prompt').value.trim();
     if (!prompt || currentSource) return;
+    const metaEl = document.getElementById('pg-meta');
+    if (isSwitching()) {
+      metaEl.textContent = 'a model switch is in progress -- try again once it finishes';
+      return;
+    }
     const maxTokens = Math.max(1, Math.min(200, parseInt(document.getElementById('pg-max-tokens').value, 10) || 40));
     const temperature = parseFloat(tempInput.value) || 0;
 
     const askBtn = document.getElementById('pg-ask');
     const stopBtn = document.getElementById('pg-stop');
     const responseEl = document.getElementById('pg-response');
-    const metaEl = document.getElementById('pg-meta');
     askBtn.disabled = true; stopBtn.style.display = 'inline-flex';
     responseEl.innerHTML = `<span class="prompt-echo">${escapeHtml(prompt)}</span> <span class="piece" id="pg-live"></span><span class="pg-cursor"></span>`;
     metaEl.textContent = 'generating…';

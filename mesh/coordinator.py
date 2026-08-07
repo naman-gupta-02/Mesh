@@ -32,8 +32,23 @@ def model_layer_count(model_name: str) -> int:
     weights -- just the (tiny) config file. Lets the coordinator support any
     GPT-2-family checkpoint (gpt2, gpt2-medium, distilgpt2, ...) instead of
     a hardcoded layer count.
+
+    This is also the fast up-front validation gate before a model switch
+    tears down a working cluster (see dashboard_server.switch_model()), so
+    it needs to actually fail on a bad identifier. transformers'
+    GPT2Config.from_pretrained() doesn't: given a local directory that
+    exists but has no config.json (e.g. an incomplete upload), it silently
+    falls back to a *default* GPT2Config instead of raising -- which would
+    make every switch to an incomplete local model "succeed" with the
+    wrong architecture. Guard that case explicitly.
     """
+    from pathlib import Path
+
     from transformers import GPT2Config
+
+    local_path = Path(model_name)
+    if local_path.is_dir() and not (local_path / "config.json").is_file():
+        raise ValueError(f"{model_name!r} is a local directory but has no config.json in it")
 
     return GPT2Config.from_pretrained(model_name).n_layer
 

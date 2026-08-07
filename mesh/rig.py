@@ -11,6 +11,28 @@ spawn and kill.
 import subprocess
 import sys
 import threading
+from dataclasses import dataclass
+
+import grpc
+
+from mesh.proto import mesh_pb2, mesh_pb2_grpc
+
+
+@dataclass(frozen=True)
+class DeviceSpec:
+    """A device the demo should (re-)spawn -- used both for the initial
+    topology and to rebuild the same topology under a different model when
+    switching models (see dashboard_server.py's switch_model()).
+    """
+
+    node_id: str
+    scale: float
+
+
+def wait_until_ready(address: str, timeout: float = 60.0) -> None:
+    channel = grpc.insecure_channel(address)
+    grpc.channel_ready_future(channel).result(timeout=timeout)
+    mesh_pb2_grpc.NodeDaemonStub(channel).Heartbeat(mesh_pb2.HeartbeatRequest(), timeout=timeout)
 
 
 class Rig:

@@ -277,6 +277,14 @@ class Cluster:
             self._tokenizer = GPT2Tokenizer.from_pretrained(self.model_name)
         return self._tokenizer
 
+    def tokenize(self, text: str) -> torch.Tensor:
+        """Public wrapper so callers that need raw input_ids for submit()
+        (e.g. a background job-generator loop) use the same cached
+        tokenizer as generate()/generate_stream(), instead of loading their
+        own copy of it.
+        """
+        return self._get_tokenizer()(text, return_tensors="pt").input_ids
+
     def generate_stream(self, prompt: str, max_new_tokens: int = 40, temperature: float = 0.0):
         """Actually "asks the model something": greedy (temperature=0) or
         sampled (temperature>0) autoregressive decoding, yielding each

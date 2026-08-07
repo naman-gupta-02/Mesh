@@ -16,10 +16,10 @@ from transformers import GPT2LMHeadModel
 
 from mesh.cluster import Cluster
 from mesh.coordinator import plan_partition
-from mesh.dashboard_server import serve
+from mesh.dashboard_server import ClusterHolder, serve
 from mesh.net_coordinator import NodeHandle, benchmark_nodes, load_shards
 from mesh.proto import mesh_pb2, mesh_pb2_grpc
-from mesh.rig import Rig
+from mesh.rig import DeviceSpec, Rig
 
 BASE_PORT = 60200
 DASHBOARD_PORT = 60299
@@ -79,7 +79,9 @@ def running_server():
         cluster = Cluster(
             primary_nodes, assignments, [], heartbeat_interval=1.0, miss_threshold=2, model_name="gpt2"
         )
-        server = serve(cluster, rig, port=DASHBOARD_PORT)
+        primary_specs = [DeviceSpec(node_id, scale) for node_id, scale in PRIMARY_DEVICES]
+        holder = ClusterHolder(cluster, primary_specs, [], heartbeat_interval=1.0, miss_threshold=2)
+        server = serve(holder, rig, port=DASHBOARD_PORT)
         try:
             yield cluster, rig
         finally:
