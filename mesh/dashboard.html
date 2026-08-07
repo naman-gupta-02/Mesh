@@ -68,11 +68,12 @@
     overflow-x: hidden;
   }
   body { padding: 20px 24px 48px; max-width: 1240px; margin: 0 auto; }
+  h1, h2, h3 { font-family: inherit; }
 
   /* ---------- header ---------- */
   header.top {
     display: flex; align-items: center; justify-content: space-between;
-    gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
+    gap: 16px; margin-bottom: 12px; flex-wrap: wrap;
   }
   .brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .brand h1 { font-size: 22px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
@@ -100,10 +101,44 @@
   }
   button.icon-btn:hover { background: var(--surface-2); transform: translateY(-1px); }
 
+  /* ---------- ticker ---------- */
+  .ticker {
+    display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary);
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 12px; margin-bottom: 18px;
+  }
+  .ticker .live-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--status-good); flex: 0 0 auto;
+    animation: dotPulse 1.8s ease-in-out infinite;
+  }
+  .ticker .t { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  /* ---------- tabs ---------- */
+  nav.tabs {
+    display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+    overflow-x: auto;
+  }
+  nav.tabs button {
+    font: inherit; font-size: 13.5px; font-weight: 700; padding: 10px 16px;
+    background: transparent; border: none; border-bottom: 2px solid transparent;
+    color: var(--text-muted); cursor: pointer; white-space: nowrap;
+    transition: color .15s ease, border-color .15s ease;
+  }
+  nav.tabs button:hover { color: var(--text-primary); }
+  nav.tabs button.active { color: var(--series-1); border-bottom-color: var(--series-1); }
+  nav.tabs button .count {
+    display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 700;
+    background: var(--surface-2); color: var(--text-muted); border-radius: 999px; padding: 1px 6px;
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; animation: tabIn .25s ease; }
+  @keyframes tabIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
   /* ---------- stat tiles ---------- */
   .stats {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 10px; margin-bottom: 28px;
+    gap: 10px; margin-bottom: 20px;
   }
   .tile {
     background: var(--surface-card); border: 1px solid var(--border); border-radius: 12px;
@@ -115,10 +150,7 @@
     color: var(--text-primary); transition: color .3s ease;
   }
   .tile .value.flash { animation: flashValue .6s ease; }
-  @keyframes flashValue {
-    0% { color: var(--series-1); }
-    100% { color: var(--text-primary); }
-  }
+  @keyframes flashValue { 0% { color: var(--series-1); } 100% { color: var(--text-primary); } }
   .tile .sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
   /* ---------- section chrome ---------- */
@@ -129,30 +161,53 @@
   section.panel > h2 {
     font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted);
     margin: 0 0 14px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+    justify-content: space-between;
   }
+  section.panel > h2 .hint { text-transform: none; letter-spacing: normal; font-weight: 500; font-size: 11.5px; }
   .two-col { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; }
   @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
 
-  /* ---------- pipeline ---------- */
-  .pipeline-scroll { overflow-x: auto; padding-bottom: 6px; }
-  .pipeline { display: flex; align-items: stretch; gap: 0; min-width: max-content; }
+  /* ---------- topology diagram ---------- */
+  .topology-wrap { width: 100%; overflow-x: auto; }
+  #topology-svg { display: block; min-width: 560px; width: 100%; height: auto; cursor: default; }
+  .topo-node-hit { cursor: pointer; }
+  .topo-node-circle { transition: r .15s ease, stroke-width .15s ease; }
+  .topo-node-hit:hover .topo-node-circle { r: 30; }
+  .topo-node-circle.alive { fill: var(--surface-card); stroke: var(--status-good); stroke-width: 2.5; }
+  .topo-node-circle.dead { fill: var(--surface-2); stroke: var(--status-critical); stroke-width: 2.5; opacity: .6; }
+  .topo-node-circle.idle { fill: var(--surface-2); stroke: var(--text-muted); stroke-width: 2; stroke-dasharray: 3 3; }
+  .topo-node-circle.standby { fill: var(--surface-2); stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 3 3; }
+  .topo-pulse { animation: topoPulse 1.8s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes topoPulse { 0%,100% { opacity: .35; } 50% { opacity: 0; } }
+  .topo-label { font-size: 11px; font-weight: 700; fill: var(--text-primary); text-anchor: middle; }
+  .topo-sublabel { font-size: 9.5px; fill: var(--text-muted); text-anchor: middle; }
+  .topo-edge { stroke: var(--gridline); stroke-width: 2; }
+  .topo-edge.dotted { stroke-dasharray: 4 4; }
+  .topo-flow-dot { fill: var(--series-1); }
+  .topo-section-label { font-size: 10px; fill: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+
+  /* ---------- sparkline ---------- */
+  #sparkline-svg { display: block; width: 100%; height: 90px; }
+  .spark-line { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .spark-area { fill: color-mix(in srgb, var(--series-1) 12%, transparent); stroke: none; }
+  .spark-dot-recovered { fill: var(--status-critical); }
+  .spark-axis-label { font-size: 10px; fill: var(--text-muted); }
+  .spark-empty { font-size: 12.5px; fill: var(--text-muted); }
+
+  /* ---------- node grid (Devices tab) ---------- */
+  .node-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
   .node-card {
-    width: 168px; flex: 0 0 auto; border-radius: 12px; border: 1.5px solid var(--border);
-    background: var(--surface-2); padding: 12px 13px; position: relative;
-    transition: border-color .3s ease, box-shadow .3s ease, opacity .3s ease;
+    border-radius: 12px; border: 1.5px solid var(--border);
+    background: var(--surface-2); padding: 13px 14px; position: relative;
+    transition: border-color .3s ease, opacity .3s ease;
   }
   .node-card.alive { border-color: color-mix(in srgb, var(--status-good) 55%, var(--border)); }
-  .node-card.alive.active-role { box-shadow: 0 0 0 1px color-mix(in srgb, var(--status-good) 30%, transparent); }
   .node-card.dead { border-color: color-mix(in srgb, var(--status-critical) 55%, var(--border)); opacity: .55; }
   .node-card .row1 { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
   .node-card .id { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dot {
-    width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto;
-    background: var(--status-good); box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-good) 60%, transparent);
-  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--status-good); }
   .node-card.alive .dot { animation: dotPulse 1.8s ease-in-out infinite; }
   .node-card.dead .dot { background: var(--status-critical); animation: none; }
-  .node-card.idle .dot { background: var(--text-muted); animation: none; }
   @keyframes dotPulse {
     0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-good) 45%, transparent); }
     70%  { box-shadow: 0 0 0 6px transparent; }
@@ -172,41 +227,19 @@
   }
   .kill-btn:hover { background: color-mix(in srgb, var(--status-critical) 12%, transparent); }
   .kill-btn:disabled { opacity: .4; cursor: default; }
-  .dead-tag {
-    margin-top: 10px; text-align: center; font-size: 11px; font-weight: 700;
-    color: var(--status-critical); letter-spacing: .04em;
-  }
+  .dead-tag { margin-top: 10px; text-align: center; font-size: 11px; font-weight: 700; color: var(--status-critical); letter-spacing: .04em; }
 
-  .connector {
-    width: 34px; flex: 0 0 auto; position: relative; align-self: center; height: 2px;
-    background: var(--gridline); margin: 0 -1px;
+  /* ---------- add device ---------- */
+  .segmented {
+    display: inline-flex; border: 1px solid var(--border); border-radius: 9px; padding: 3px;
+    background: var(--surface-2); margin-bottom: 14px;
   }
-  .connector .flow-dot {
-    position: absolute; top: -3px; width: 8px; height: 8px; border-radius: 50%;
-    background: var(--series-1); opacity: 0;
+  .segmented button {
+    font: inherit; font-size: 12.5px; font-weight: 700; padding: 6px 14px; border-radius: 6px;
+    border: none; background: transparent; color: var(--text-muted); cursor: pointer;
+    transition: background .15s ease, color .15s ease;
   }
-  .connector.animate .flow-dot { animation: flow 1.1s linear infinite; }
-  @keyframes flow {
-    0%   { left: -4px; opacity: 0; }
-    10%  { opacity: 1; }
-    90%  { opacity: 1; }
-    100% { left: 30px; opacity: 0; }
-  }
-
-  /* ---------- layer distribution bar ---------- */
-  .distribution { display: flex; height: 22px; border-radius: 7px; overflow: hidden; margin-top: 16px; border: 1px solid var(--border); }
-  .distribution .seg { transition: width .5s ease; position: relative; }
-  .distribution .seg + .seg { border-left: 2px solid var(--surface-card); }
-
-  /* ---------- standby chips ---------- */
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-  .chip {
-    font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
-    border: 1px dashed var(--border); color: var(--text-secondary); background: var(--surface-2);
-  }
-  .empty-hint { color: var(--text-muted); font-size: 12.5px; }
-
-  /* ---------- add device form ---------- */
+  .segmented button.active { background: var(--surface-card); color: var(--series-1); box-shadow: 0 1px 2px var(--border); }
   .add-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 14px; }
   .field { display: flex; flex-direction: column; gap: 4px; }
   .field label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
@@ -215,6 +248,7 @@
     border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
     width: 140px;
   }
+  .field.wide input { width: 220px; }
   .field input:focus, .field select:focus { outline: 2px solid var(--series-1); outline-offset: 1px; }
   button.primary {
     font: inherit; font-size: 13px; font-weight: 700; padding: 8px 16px; border-radius: 8px;
@@ -224,9 +258,14 @@
   button.primary:hover { filter: brightness(1.08); }
   button.primary:active { transform: scale(.97); }
   button.primary:disabled { opacity: .5; cursor: default; }
+  button.ghost {
+    font: inherit; font-size: 13px; font-weight: 700; padding: 8px 16px; border-radius: 8px;
+    border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer;
+  }
   .form-msg { font-size: 12px; margin-top: 4px; min-height: 16px; }
   .form-msg.ok { color: var(--status-good); }
   .form-msg.err { color: var(--status-critical); }
+  .help-text { font-size: 11.5px; color: var(--text-muted); margin: -6px 0 12px; line-height: 1.5; }
 
   .snippet {
     background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
@@ -240,18 +279,64 @@
   }
   .snippet .copy-btn.copied { color: var(--status-good); border-color: color-mix(in srgb, var(--status-good) 45%, transparent); }
 
-  /* ---------- event log ---------- */
-  .log { max-height: 340px; overflow-y: auto; display: flex; flex-direction: column-reverse; gap: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
+    border: 1px dashed var(--border); color: var(--text-secondary); background: var(--surface-2);
+  }
+  .empty-hint { color: var(--text-muted); font-size: 12.5px; }
+
+  /* ---------- playground ---------- */
+  .pg-prompt-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  textarea#pg-prompt {
+    flex: 1 1 320px; font: inherit; font-size: 14px; padding: 10px 12px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+    resize: vertical; min-height: 44px;
+  }
+  textarea#pg-prompt:focus { outline: 2px solid var(--series-1); outline-offset: 1px; }
+  .pg-controls { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+  .pg-control { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+  .pg-control input[type="number"] {
+    width: 64px; font: inherit; font-size: 12.5px; padding: 5px 7px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+  }
+  .pg-control input[type="range"] { width: 120px; accent-color: var(--series-1); }
+  .pg-response {
+    margin-top: 16px; padding: 16px 18px; border-radius: 12px; background: var(--surface-2);
+    border: 1px solid var(--border); font-size: 14.5px; line-height: 1.7; min-height: 60px;
+    white-space: pre-wrap;
+  }
+  .pg-response .prompt-echo { color: var(--text-secondary); font-weight: 600; }
+  .pg-response .piece { color: var(--text-primary); }
+  .pg-cursor {
+    display: inline-block; width: 8px; height: 16px; background: var(--series-1);
+    margin-left: 2px; vertical-align: text-bottom; animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .pg-meta { margin-top: 8px; font-size: 11.5px; color: var(--text-muted); }
+  .pg-history { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .pg-history-item {
+    padding: 12px 14px; border-radius: 10px; background: var(--surface-1); border: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .pg-history-item .q { font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+  .pg-history-item .a { color: var(--text-secondary); line-height: 1.6; }
+
+  /* ---------- activity log ---------- */
+  .log-filters { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .log-filters button {
+    font: inherit; font-size: 11.5px; font-weight: 700; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); cursor: pointer;
+  }
+  .log-filters button.active { background: var(--series-1); color: white; border-color: transparent; }
+  .log { max-height: 480px; overflow-y: auto; display: flex; flex-direction: column-reverse; gap: 6px; }
   .log-entry {
     display: flex; gap: 9px; align-items: baseline; font-size: 12.5px;
     padding: 7px 10px; border-radius: 8px; background: var(--surface-2);
     border-left: 3px solid var(--gridline);
   }
   .log-entry.enter { animation: slideIn .35s ease; }
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
   .log-entry .t { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 11px; flex: 0 0 auto; }
   .log-entry .m { color: var(--text-secondary); }
   .log-entry.k-join { border-left-color: var(--series-1); }
@@ -259,6 +344,27 @@
   .log-entry.k-recover { border-left-color: var(--status-warning); }
   .log-entry.k-rebalance { border-left-color: var(--series-7); }
   .log-entry.k-job { border-left-color: var(--status-good); }
+  .log-entry.k-playground { border-left-color: var(--series-5); }
+
+  /* ---------- modal ---------- */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none;
+    align-items: center; justify-content: center; z-index: 50; padding: 20px;
+  }
+  .modal-backdrop.visible { display: flex; }
+  .modal {
+    background: var(--surface-card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 22px 24px; width: 100%; max-width: 360px; box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    animation: modalIn .18s ease;
+  }
+  @keyframes modalIn { from { opacity: 0; transform: scale(.97) translateY(4px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+  .modal h3 { margin: 0 0 4px; font-size: 17px; }
+  .modal .modal-role { font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 16px; }
+  .modal-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--gridline); font-size: 13px; }
+  .modal-row:last-of-type { border-bottom: none; }
+  .modal-row .k { color: var(--text-muted); }
+  .modal-row .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .modal-actions { display: flex; gap: 8px; margin-top: 18px; }
 
   footer { text-align: center; color: var(--text-muted); font-size: 11.5px; margin-top: 30px; }
   footer code { font-family: ui-monospace, monospace; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
@@ -278,69 +384,154 @@
   </div>
 </header>
 
-<div class="stats">
-  <div class="tile"><div class="label">Active devices</div><div class="value" id="stat-active">–</div><div class="sub" id="stat-active-sub"></div></div>
-  <div class="tile"><div class="label">Standby pool</div><div class="value" id="stat-standby">–</div><div class="sub">held in reserve</div></div>
-  <div class="tile"><div class="label">Total layers</div><div class="value" id="stat-layers">–</div><div class="sub">across the pipeline</div></div>
-  <div class="tile"><div class="label">Jobs completed</div><div class="value" id="stat-jobs">–</div><div class="sub" id="stat-jobs-sub"></div></div>
-  <div class="tile"><div class="label">Jobs recovered</div><div class="value" id="stat-recovered">–</div><div class="sub">survived a node death</div></div>
-  <div class="tile"><div class="label">Last job latency</div><div class="value" id="stat-latency">–</div><div class="sub">end to end</div></div>
-</div>
+<div class="ticker"><span class="live-dot"></span><span class="t" id="ticker-time"></span><span id="ticker-text">connecting…</span></div>
 
-<section class="panel">
-  <h2>Pipeline</h2>
-  <div class="pipeline-scroll">
-    <div class="pipeline" id="pipeline"></div>
+<nav class="tabs">
+  <button data-tab="overview" class="active">Overview</button>
+  <button data-tab="devices">Devices <span class="count" id="devices-count"></span></button>
+  <button data-tab="playground">Playground</button>
+  <button data-tab="activity">Activity</button>
+</nav>
+
+<!-- ===================== OVERVIEW ===================== -->
+<section class="tab-panel active" id="tab-overview">
+  <div class="stats">
+    <div class="tile"><div class="label">Active devices</div><div class="value" id="stat-active">–</div><div class="sub" id="stat-active-sub"></div></div>
+    <div class="tile"><div class="label">Standby pool</div><div class="value" id="stat-standby">–</div><div class="sub">held in reserve</div></div>
+    <div class="tile"><div class="label">Total layers</div><div class="value" id="stat-layers">–</div><div class="sub">across the pipeline</div></div>
+    <div class="tile"><div class="label">Jobs completed</div><div class="value" id="stat-jobs">–</div><div class="sub" id="stat-jobs-sub"></div></div>
+    <div class="tile"><div class="label">Jobs recovered</div><div class="value" id="stat-recovered">–</div><div class="sub">survived a node death</div></div>
+    <div class="tile"><div class="label">Last job latency</div><div class="value" id="stat-latency">–</div><div class="sub">end to end</div></div>
   </div>
-  <div class="distribution" id="distribution"></div>
-</section>
 
-<div class="two-col">
   <section class="panel">
-    <h2>Add a device</h2>
-    <form class="add-form" id="add-form">
-      <div class="field">
-        <label for="f-node-id">Node ID</label>
-        <input id="f-node-id" name="node_id" placeholder="my-laptop" required>
-      </div>
-      <div class="field">
-        <label for="f-scale">Relative speed</label>
-        <input id="f-scale" name="scale" type="number" step="0.1" min="0.1" value="1.0">
-      </div>
-      <div class="field">
-        <label for="f-join">Joins as</label>
-        <select id="f-join" name="join_as">
-          <option value="active">active (rebalances in)</option>
-          <option value="standby">standby (held in reserve)</option>
-        </select>
-      </div>
-      <button class="primary" type="submit">Add device</button>
-    </form>
-    <div class="form-msg" id="form-msg"></div>
-
-    <div class="snippet" id="cli-snippet">
-      <button class="copy-btn" id="copy-btn">Copy</button>
-      <span id="cli-text"># On this machine (simulated device):
-python -m mesh.daemon --node-id my-laptop --address 127.0.0.1:PORT
-
-# On a real device elsewhere on your network:
-python -m mesh.daemon --node-id my-laptop --address &lt;lan-ip&gt;:PORT
-
-# Then, from the coordinator process:
-cluster.add_device(NodeHandle("my-laptop", "&lt;lan-ip&gt;:PORT"), join_as="active")</span>
+    <h2>Pipeline topology <span class="hint">click a node for details</span></h2>
+    <div class="topology-wrap">
+      <svg id="topology-svg" viewBox="0 0 900 240" preserveAspectRatio="xMidYMid meet"></svg>
     </div>
   </section>
 
   <section class="panel">
-    <h2>Standby pool</h2>
-    <div class="chips" id="standby-chips"><span class="empty-hint">none held in reserve</span></div>
+    <h2>Job latency <span class="hint" id="spark-hint"></span></h2>
+    <svg id="sparkline-svg" viewBox="0 0 600 90" preserveAspectRatio="none"></svg>
   </section>
-</div>
-
-<section class="panel">
-  <h2>Event log</h2>
-  <div class="log" id="log"></div>
 </section>
+
+<!-- ===================== DEVICES ===================== -->
+<section class="tab-panel" id="tab-devices">
+  <section class="panel">
+    <h2>Nodes</h2>
+    <div class="node-grid" id="node-grid"></div>
+  </section>
+
+  <div class="two-col">
+    <section class="panel">
+      <h2>Add a device</h2>
+      <div class="segmented" id="mode-toggle">
+        <button type="button" data-mode="spawn" class="active">Simulate here</button>
+        <button type="button" data-mode="connect">Connect real device</button>
+      </div>
+
+      <form class="add-form" id="add-form-spawn">
+        <div class="field"><label for="f-node-id">Node ID</label><input id="f-node-id" placeholder="my-laptop" required></div>
+        <div class="field"><label for="f-scale">Relative speed</label><input id="f-scale" type="number" step="0.1" min="0.1" value="1.0"></div>
+        <div class="field">
+          <label for="f-join">Joins as</label>
+          <select id="f-join">
+            <option value="active">active (rebalances in)</option>
+            <option value="standby">standby (held in reserve)</option>
+          </select>
+        </div>
+        <button class="primary" type="submit">Add device</button>
+      </form>
+
+      <form class="add-form" id="add-form-connect" style="display:none">
+        <div class="field"><label for="c-node-id">Node ID</label><input id="c-node-id" placeholder="friends-laptop" required></div>
+        <div class="field wide"><label for="c-address">Address (host:port)</label><input id="c-address" placeholder="192.168.1.42:7000" required></div>
+        <div class="field">
+          <label for="c-join">Joins as</label>
+          <select id="c-join">
+            <option value="active">active (rebalances in)</option>
+            <option value="standby">standby (held in reserve)</option>
+          </select>
+        </div>
+        <button class="primary" type="submit">Connect device</button>
+      </form>
+      <div class="form-msg" id="form-msg"></div>
+
+      <div class="help-text" id="mode-help">
+        Spawns a real gRPC daemon process on this machine, running the same model, and onboards it —
+        a stand-in for a device you don't have handy.
+      </div>
+      <div class="snippet" id="cli-snippet">
+        <button class="copy-btn" id="copy-btn">Copy</button>
+        <span id="cli-text">loading…</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Standby pool</h2>
+      <div class="chips" id="standby-chips"><span class="empty-hint">none held in reserve</span></div>
+    </section>
+  </div>
+</section>
+
+<!-- ===================== PLAYGROUND ===================== -->
+<section class="tab-panel" id="tab-playground">
+  <section class="panel">
+    <h2>Ask the model <span class="hint" id="pg-model-hint"></span></h2>
+    <div class="pg-prompt-row">
+      <textarea id="pg-prompt" rows="2" placeholder="The best way to distribute a language model across a campus network is"></textarea>
+      <button class="primary" id="pg-ask" type="button">Ask</button>
+      <button class="ghost" id="pg-stop" type="button" style="display:none">Stop</button>
+    </div>
+    <div class="pg-controls">
+      <label class="pg-control">Max new tokens
+        <input type="number" id="pg-max-tokens" value="40" min="1" max="200">
+      </label>
+      <label class="pg-control">Temperature
+        <input type="range" id="pg-temp" min="0" max="1.5" step="0.1" value="0">
+        <span id="pg-temp-value">0.0 (greedy)</span>
+      </label>
+    </div>
+    <div class="pg-response" id="pg-response">
+      <span style="color:var(--text-muted)">Every generated token is a full pass through the distributed pipeline — expect a second or so per word, not instant chat speed.</span>
+    </div>
+    <div class="pg-meta" id="pg-meta"></div>
+    <div class="pg-history" id="pg-history"></div>
+  </section>
+</section>
+
+<!-- ===================== ACTIVITY ===================== -->
+<section class="tab-panel" id="tab-activity">
+  <section class="panel">
+    <h2>Event log</h2>
+    <div class="log-filters" id="log-filters">
+      <button data-filter="all" class="active">All</button>
+      <button data-filter="k-job">Jobs</button>
+      <button data-filter="k-recover">Recoveries</button>
+      <button data-filter="k-rebalance">Rebalance</button>
+      <button data-filter="k-join">Devices</button>
+      <button data-filter="k-fail">Failures</button>
+      <button data-filter="k-playground">Playground</button>
+    </div>
+    <div class="log" id="log"></div>
+  </section>
+</section>
+
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal" id="node-modal">
+    <h3 id="modal-title">—</h3>
+    <div class="modal-role" id="modal-role">—</div>
+    <div class="modal-row"><span class="k">Status</span><span class="v" id="modal-status">—</span></div>
+    <div class="modal-row"><span class="k">Address</span><span class="v" id="modal-address">—</span></div>
+    <div class="modal-row"><span class="k">Layer range</span><span class="v" id="modal-layers">—</span></div>
+    <div class="modal-actions">
+      <button class="ghost" id="modal-close" type="button">Close</button>
+      <button class="primary" id="modal-goto-devices" type="button">Manage in Devices</button>
+    </div>
+  </div>
+</div>
 
 <footer>
   Polling <code>/api/status</code> every 1s · node states: <span style="color:var(--status-good)">●</span> alive
@@ -351,62 +542,76 @@ cluster.add_device(NodeHandle("my-laptop", "&lt;lan-ip&gt;:PORT"), join_as="acti
 <script>
 (() => {
   const SERIES = ['--series-1','--series-2','--series-3','--series-4','--series-5','--series-6','--series-7','--series-8'];
+  const SVG_NS = 'http://www.w3.org/2000/svg';
   const root = document.documentElement;
+  let lastData = null;
 
-  // ---- theme ----
-  const stored = localStorage.getItem('mesh-theme');
-  if (stored) root.setAttribute('data-theme', stored);
+  // ---------------- theme ----------------
+  const storedTheme = localStorage.getItem('mesh-theme');
+  if (storedTheme) root.setAttribute('data-theme', storedTheme);
   document.getElementById('theme-toggle').addEventListener('click', () => {
     const cur = root.getAttribute('data-theme') ||
       (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     const next = cur === 'dark' ? 'light' : 'dark';
     root.setAttribute('data-theme', next);
     localStorage.setItem('mesh-theme', next);
+    if (lastData) { renderTopology(lastData.nodes, lastData.standby_ids); renderSparkline(lastData.latency_history); }
   });
 
-  // ---- color per node identity ----
+  // ---------------- tabs ----------------
+  document.querySelectorAll('nav.tabs button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    });
+  });
+  function gotoTab(name) {
+    document.querySelector(`nav.tabs button[data-tab="${name}"]`).click();
+  }
+
+  // ---------------- helpers ----------------
   function hashColor(id) {
     let h = 0;
     for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
     return `var(${SERIES[h % SERIES.length]})`;
   }
-
-  function fmtTime(ts) {
-    const d = new Date(ts * 1000);
-    return d.toLocaleTimeString([], { hour12: false });
-  }
-
+  function fmtTime(ts) { return new Date(ts * 1000).toLocaleTimeString([], { hour12: false }); }
   function categorize(msg) {
     if (/join/i.test(msg)) return 'k-join';
-    if (/fail|lost|dead/i.test(msg)) return 'k-fail';
+    if (/fail|lost|dead|rejected/i.test(msg)) return 'k-fail';
     if (/recover/i.test(msg)) return 'k-recover';
     if (/rebalanc/i.test(msg)) return 'k-rebalance';
+    if (/playground/i.test(msg)) return 'k-playground';
     if (/job/i.test(msg)) return 'k-job';
     return '';
   }
-
-  let seenEventCount = 0;
-  let lastActive = null, lastJobs = null, lastRecovered = null, lastStandby = null;
-
-  function flash(el) {
-    el.classList.remove('flash');
-    void el.offsetWidth; // restart animation
-    el.classList.add('flash');
+  function flash(el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  function svgEl(tag, attrs) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+    return el;
   }
 
-  function render(data) {
-    document.getElementById('model-badge').textContent = `${data.model_name} · ${data.num_layers} layers`;
+  // ---------------- top-level render ----------------
+  let seenEventCount = 0;
+  let lastActive = null, lastJobs = null, lastRecovered = null;
+  let activeLogFilter = 'all';
 
-    const rebalanceBadge = document.getElementById('rebalance-badge');
-    rebalanceBadge.classList.toggle('visible', !!data.needs_rebalance);
+  function render(data) {
+    lastData = data;
+    document.getElementById('model-badge').textContent = `${data.model_name} · ${data.num_layers} layers`;
+    document.getElementById('pg-model-hint').textContent = `running ${data.model_name}`;
+    document.getElementById('rebalance-badge').classList.toggle('visible', !!data.needs_rebalance);
 
     const aliveNodes = data.nodes.filter(n => n.alive);
-    const activeCount = aliveNodes.length;
     const el = document.getElementById('stat-active');
-    if (lastActive !== null && lastActive !== activeCount) flash(el);
-    el.textContent = activeCount;
+    if (lastActive !== null && lastActive !== aliveNodes.length) flash(el);
+    el.textContent = aliveNodes.length;
     document.getElementById('stat-active-sub').textContent = `of ${data.nodes.length} tracked`;
-    lastActive = activeCount;
+    lastActive = aliveNodes.length;
+    document.getElementById('devices-count').textContent = data.nodes.length;
 
     document.getElementById('stat-standby').textContent = data.standby_ids.length;
     document.getElementById('stat-layers').textContent = data.num_layers;
@@ -421,131 +626,225 @@ cluster.add_device(NodeHandle("my-laptop", "&lt;lan-ip&gt;:PORT"), join_as="acti
     recEl.textContent = data.jobs_recovered;
     lastRecovered = data.jobs_recovered;
 
-    document.getElementById('stat-latency').textContent =
-      data.last_job_ms != null ? `${data.last_job_ms.toFixed(0)} ms` : '–';
+    document.getElementById('stat-latency').textContent = data.last_job_ms != null ? `${data.last_job_ms.toFixed(0)} ms` : '–';
 
-    renderPipeline(data.nodes);
-    renderDistribution(data.nodes.filter(n => n.num_layers > 0));
+    renderTicker(data.events);
+    renderTopology(data.nodes, data.standby_ids);
+    renderSparkline(data.latency_history);
+    renderNodeGrid(data.nodes);
     renderStandby(data.standby_ids);
     renderLog(data.events);
+    updateCliSnippet(data.model_name);
   }
 
-  function renderPipeline(nodes) {
-    const container = document.getElementById('pipeline');
-    container.innerHTML = '';
-    nodes.forEach((n, i) => {
-      if (i > 0) {
-        const connector = document.createElement('div');
-        connector.className = 'connector' + (n.alive && nodes[i-1].alive ? ' animate' : '');
-        const dot = document.createElement('div');
-        dot.className = 'flow-dot';
-        dot.style.animationDelay = `${(i * 0.15).toFixed(2)}s`;
-        connector.appendChild(dot);
-        container.appendChild(connector);
+  function renderTicker(events) {
+    if (!events.length) return;
+    const last = events[events.length - 1];
+    document.getElementById('ticker-time').textContent = fmtTime(last.time);
+    document.getElementById('ticker-text').textContent = last.message;
+  }
+
+  // ---------------- topology (SVG) ----------------
+  function renderTopology(nodes, standbyIds) {
+    const svg = document.getElementById('topology-svg');
+    svg.innerHTML = '';
+    const width = 900, mainY = 100, r = 26;
+    const n = Math.max(nodes.length, 1);
+    const marginX = 70;
+    const step = n > 1 ? (width - 2 * marginX) / (n - 1) : 0;
+
+    const positions = nodes.map((node, i) => ({ node, x: marginX + step * i, y: mainY }));
+
+    // edges first (so nodes draw on top)
+    for (let i = 1; i < positions.length; i++) {
+      const a = positions[i - 1], b = positions[i];
+      const bothAlive = a.node.alive && b.node.alive;
+      svg.appendChild(svgEl('line', {
+        x1: a.x + r, y1: a.y, x2: b.x - r, y2: b.y,
+        class: 'topo-edge' + (bothAlive ? '' : ' dotted'),
+      }));
+      if (bothAlive) {
+        const dot = svgEl('circle', { r: 4, class: 'topo-flow-dot' });
+        const path = svgEl('animateMotion', {
+          dur: '1.3s', repeatCount: 'indefinite',
+          path: `M ${a.x + r} ${a.y} L ${b.x - r} ${b.y}`,
+          begin: `${(i * 0.18).toFixed(2)}s`,
+        });
+        dot.appendChild(path);
+        svg.appendChild(dot);
       }
-      const card = document.createElement('div');
-      // alive must win regardless of role: a dead node that lost its shard
-      // during healing has role 'idle' too (no current assignment), same
-      // as a freshly-joined node awaiting its first rebalance -- only the
-      // latter should render as idle/grey rather than dead/red.
+    }
+
+    // main pipeline nodes
+    positions.forEach(({ node, x, y }) => {
+      const g = svgEl('g', { class: 'topo-node-hit', 'data-node-id': node.node_id });
+      const stateClass = !node.alive ? 'dead' : (node.role === 'idle' ? 'idle' : 'alive');
+      if (node.alive && node.role !== 'idle') {
+        g.appendChild(svgEl('circle', { cx: x, cy: y, r: r + 6, class: 'topo-node-circle topo-pulse alive', fill: 'none' }));
+      }
+      g.appendChild(svgEl('circle', { cx: x, cy: y, r, class: `topo-node-circle ${stateClass}` }));
+      if (node.num_layers > 0) {
+        g.appendChild(svgEl('circle', { cx: x, cy: y + r + 10, r: 3, fill: hashColor(node.node_id) }));
+      }
+      const label = svgEl('text', { x, y: y + 4, class: 'topo-label' });
+      label.textContent = node.node_id.length > 12 ? node.node_id.slice(0, 11) + '…' : node.node_id;
+      g.appendChild(label);
+      const sub = svgEl('text', { x, y: y + r + 24, class: 'topo-sublabel' });
+      sub.textContent = node.num_layers > 0 ? `${node.num_layers}L` : (node.alive ? 'idle' : 'dead');
+      g.appendChild(sub);
+      g.addEventListener('click', () => openNodeModal(node));
+      svg.appendChild(g);
+    });
+
+    // standby row
+    if (standbyIds.length) {
+      const standbyY = 200;
+      svg.appendChild(svgEl('text', { x: marginX, y: standbyY - 26, class: 'topo-section-label' })).textContent = 'RESERVE';
+      const sLabel = svg.lastChild; sLabel.textContent = 'RESERVE';
+      standbyIds.forEach((id, i) => {
+        const x = marginX + i * 90;
+        const g = svgEl('g', { class: 'topo-node-hit' });
+        g.appendChild(svgEl('circle', { cx: x, cy: standbyY, r: 18, class: 'topo-node-circle standby' }));
+        const label = svgEl('text', { x, y: standbyY + 3, class: 'topo-sublabel' });
+        label.textContent = id.length > 9 ? id.slice(0, 8) + '…' : id;
+        g.appendChild(label);
+        svg.appendChild(g);
+      });
+    }
+  }
+
+  function openNodeModal(node) {
+    document.getElementById('modal-title').textContent = node.node_id;
+    document.getElementById('modal-role').textContent = node.role;
+    const statusEl = document.getElementById('modal-status');
+    statusEl.textContent = node.alive ? 'alive' : 'unreachable';
+    statusEl.style.color = node.alive ? 'var(--status-good)' : 'var(--status-critical)';
+    document.getElementById('modal-address').textContent = node.address;
+    document.getElementById('modal-layers').textContent =
+      node.num_layers > 0 ? `[${node.layer_start}, ${node.layer_end}) — ${node.num_layers} layers` : 'none';
+    document.getElementById('modal-backdrop').classList.add('visible');
+  }
+  document.getElementById('modal-close').addEventListener('click', () => document.getElementById('modal-backdrop').classList.remove('visible'));
+  document.getElementById('modal-backdrop').addEventListener('click', (e) => { if (e.target.id === 'modal-backdrop') e.currentTarget.classList.remove('visible'); });
+  document.getElementById('modal-goto-devices').addEventListener('click', () => { document.getElementById('modal-backdrop').classList.remove('visible'); gotoTab('devices'); });
+
+  // ---------------- sparkline ----------------
+  function renderSparkline(history) {
+    const svg = document.getElementById('sparkline-svg');
+    svg.innerHTML = '';
+    document.getElementById('spark-hint').textContent = history.length ? `last ${history.length} jobs` : '';
+    if (!history.length) {
+      svg.appendChild(svgEl('text', { x: 10, y: 45, class: 'spark-empty' })).textContent = 'No jobs submitted yet.';
+      svg.lastChild.textContent = 'No jobs submitted yet.';
+      return;
+    }
+    const w = 600, h = 90, padL = 6, padR = 6, padT = 10, padB = 18;
+    const maxMs = Math.max(...history.map(p => p.elapsed_ms), 10) * 1.1;
+    const stepX = history.length > 1 ? (w - padL - padR) / (history.length - 1) : 0;
+    const pts = history.map((p, i) => ({
+      x: padL + stepX * i,
+      y: padT + (1 - p.elapsed_ms / maxMs) * (h - padT - padB),
+      recovered: p.recovered,
+    }));
+
+    const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+    const areaPath = `${linePath} L ${pts[pts.length - 1].x.toFixed(1)} ${h - padB} L ${pts[0].x.toFixed(1)} ${h - padB} Z`;
+    svg.appendChild(svgEl('path', { d: areaPath, class: 'spark-area' }));
+    svg.appendChild(svgEl('path', { d: linePath, class: 'spark-line' }));
+    pts.forEach(p => { if (p.recovered) svg.appendChild(svgEl('circle', { cx: p.x, cy: p.y, r: 3.5, class: 'spark-dot-recovered' })); });
+    svg.appendChild(svgEl('text', { x: padL, y: h - 4, class: 'spark-axis-label' })).textContent = '0ms';
+    svg.lastChild.textContent = '0ms';
+    const maxLabel = svgEl('text', { x: w - padR, y: padT + 8, class: 'spark-axis-label', 'text-anchor': 'end' });
+    maxLabel.textContent = `${maxMs.toFixed(0)}ms`;
+    svg.appendChild(maxLabel);
+  }
+
+  // ---------------- devices tab ----------------
+  function renderNodeGrid(nodes) {
+    const grid = document.getElementById('node-grid');
+    grid.innerHTML = '';
+    nodes.forEach(n => {
       const stateClass = !n.alive ? 'dead' : (n.role === 'idle' ? 'idle' : 'alive');
-      card.className = `node-card ${stateClass}` + (n.alive && n.role !== 'idle' ? ' active-role' : '');
+      const card = document.createElement('div');
+      card.className = `node-card ${stateClass}`;
       const color = hashColor(n.node_id);
       card.innerHTML = `
-        <div class="row1">
-          <span class="id" title="${n.node_id}">${n.node_id}</span>
-          <span class="dot"></span>
-        </div>
+        <div class="row1"><span class="id" title="${n.node_id}">${n.node_id}</span><span class="dot"></span></div>
         <span class="role-tag">${n.role}</span>
         <div class="layers">${n.num_layers > 0 ? `layers [${n.layer_start}, ${n.layer_end})` : 'no shard'}</div>
         <div class="addr">${n.address}</div>
         <div class="swatch" style="background:${n.num_layers > 0 ? color : 'transparent'}"></div>
-        ${n.alive
-          ? `<button class="kill-btn" data-kill="${n.node_id}">Kill (simulate crash)</button>`
-          : `<div class="dead-tag">✕ unreachable</div>`}
+        ${n.alive ? `<button class="kill-btn" data-kill="${n.node_id}">Kill (simulate crash)</button>` : `<div class="dead-tag">✕ unreachable</div>`}
       `;
-      container.appendChild(card);
+      grid.appendChild(card);
     });
-    container.querySelectorAll('[data-kill]').forEach(btn => {
+    grid.querySelectorAll('[data-kill]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        btn.disabled = true;
-        btn.textContent = 'Killing…';
+        btn.disabled = true; btn.textContent = 'Killing…';
         await fetch(`/api/devices/${encodeURIComponent(btn.dataset.kill)}/kill`, { method: 'POST' });
       });
     });
   }
 
-  function renderDistribution(nodes) {
-    const bar = document.getElementById('distribution');
-    bar.innerHTML = '';
-    const total = nodes.reduce((s, n) => s + n.num_layers, 0) || 1;
-    nodes.forEach(n => {
-      const seg = document.createElement('div');
-      seg.className = 'seg';
-      seg.style.width = `${(n.num_layers / total) * 100}%`;
-      seg.style.background = hashColor(n.node_id);
-      seg.title = `${n.node_id}: ${n.num_layers} layers`;
-      bar.appendChild(seg);
-    });
-  }
-
   function renderStandby(ids) {
     const wrap = document.getElementById('standby-chips');
-    if (!ids.length) {
-      wrap.innerHTML = '<span class="empty-hint">none held in reserve</span>';
-      return;
-    }
-    wrap.innerHTML = ids.map(id => `<span class="chip">${id}</span>`).join('');
+    wrap.innerHTML = ids.length ? ids.map(id => `<span class="chip">${id}</span>`).join('') : '<span class="empty-hint">none held in reserve</span>';
   }
 
-  function renderLog(events) {
-    const log = document.getElementById('log');
-    const isNew = events.length > seenEventCount;
-    const startIdx = isNew ? seenEventCount : 0;
-    if (!isNew && events.length === seenEventCount) return; // nothing changed, avoid re-render flicker
-    log.innerHTML = '';
-    events.forEach((e, i) => {
-      const row = document.createElement('div');
-      row.className = 'log-entry ' + categorize(e.message) + (i >= startIdx ? ' enter' : '');
-      row.innerHTML = `<span class="t">${fmtTime(e.time)}</span><span class="m">${e.message}</span>`;
-      log.appendChild(row);
+  let cliModelName = null;
+  function updateCliSnippet(modelName) {
+    if (cliModelName === modelName) return;
+    cliModelName = modelName;
+    const mode = document.querySelector('#mode-toggle button.active').dataset.mode;
+    const el = document.getElementById('cli-text');
+    if (mode === 'connect') {
+      el.textContent =
+`# Your friend runs this on THEIR machine (must be reachable on your network):
+python -m mesh.daemon --node-id friends-laptop --address 0.0.0.0:7000 --model ${modelName}
+
+# They find their LAN IP (run on their machine):
+#   macOS:   ipconfig getifaddr en0
+#   Linux:   hostname -I
+#   Windows: ipconfig   (look for "IPv4 Address")
+
+# Back here: set Address to <their-lan-ip>:7000 above, then click "Connect device".
+# Firewalls / VPNs can block the port -- same WiFi is the easy case.`;
+    } else {
+      el.textContent =
+`# This spawns a real daemon process on THIS machine (a stand-in for hardware
+# you don't have handy right now) and onboards it automatically:
+python -m mesh.daemon --node-id my-laptop --address 127.0.0.1:PORT --model ${modelName}
+
+# Equivalent to clicking "Add device" with mode=spawn.`;
+    }
+  }
+
+  document.querySelectorAll('#mode-toggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#mode-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const isConnect = btn.dataset.mode === 'connect';
+      document.getElementById('add-form-spawn').style.display = isConnect ? 'none' : 'flex';
+      document.getElementById('add-form-connect').style.display = isConnect ? 'flex' : 'none';
+      document.getElementById('mode-help').textContent = isConnect
+        ? "Onboards a daemon already running elsewhere on your network (a friend's laptop, another room) — nothing is spawned here."
+        : "Spawns a real gRPC daemon process on this machine, running the same model, and onboards it — a stand-in for a device you don't have handy.";
+      cliModelName = null; // force snippet refresh for the new mode
+      if (lastData) updateCliSnippet(lastData.model_name);
     });
-    seenEventCount = events.length;
-  }
+  });
 
-  async function poll() {
-    try {
-      const res = await fetch('/api/status');
-      const data = await res.json();
-      render(data);
-    } catch (err) {
-      // server briefly unreachable (e.g. mid-restart) -- just retry next tick
-    }
-  }
-
-  document.getElementById('add-form').addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const btn = ev.target.querySelector('button[type="submit"]');
+  async function submitAddDevice(body) {
     const msg = document.getElementById('form-msg');
-    const body = {
-      node_id: document.getElementById('f-node-id').value.trim(),
-      scale: parseFloat(document.getElementById('f-scale').value) || 1.0,
-      join_as: document.getElementById('f-join').value,
-    };
-    btn.disabled = true;
-    msg.className = 'form-msg';
-    msg.textContent = 'Spawning and onboarding…';
+    msg.className = 'form-msg'; msg.textContent = 'Onboarding…';
     try {
       const res = await fetch('/api/devices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       const data = await res.json();
       if (res.ok) {
         msg.className = 'form-msg ok';
         msg.textContent = `${body.node_id} is joining as ${body.join_as} at ${data.address} — watch the event log.`;
-        document.getElementById('f-node-id').value = '';
       } else {
         msg.className = 'form-msg err';
         msg.textContent = data.error || 'failed to add device';
@@ -553,21 +852,158 @@ cluster.add_device(NodeHandle("my-laptop", "&lt;lan-ip&gt;:PORT"), join_as="acti
     } catch (err) {
       msg.className = 'form-msg err';
       msg.textContent = 'request failed: ' + err;
-    } finally {
-      btn.disabled = false;
     }
+  }
+
+  document.getElementById('add-form-spawn').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const nodeId = document.getElementById('f-node-id').value.trim();
+    submitAddDevice({
+      node_id: nodeId, mode: 'spawn',
+      scale: parseFloat(document.getElementById('f-scale').value) || 1.0,
+      join_as: document.getElementById('f-join').value,
+    });
+    document.getElementById('f-node-id').value = '';
+  });
+
+  document.getElementById('add-form-connect').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const nodeId = document.getElementById('c-node-id').value.trim();
+    submitAddDevice({
+      node_id: nodeId, mode: 'connect',
+      address: document.getElementById('c-address').value.trim(),
+      join_as: document.getElementById('c-join').value,
+    });
+    document.getElementById('c-node-id').value = '';
+    document.getElementById('c-address').value = '';
   });
 
   document.getElementById('copy-btn').addEventListener('click', () => {
-    const text = document.getElementById('cli-text').textContent;
-    navigator.clipboard.writeText(text).then(() => {
+    navigator.clipboard.writeText(document.getElementById('cli-text').textContent).then(() => {
       const btn = document.getElementById('copy-btn');
-      btn.textContent = 'Copied!';
-      btn.classList.add('copied');
+      btn.textContent = 'Copied!'; btn.classList.add('copied');
       setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
     });
   });
 
+  // ---------------- playground ----------------
+  const tempInput = document.getElementById('pg-temp');
+  const tempValue = document.getElementById('pg-temp-value');
+  tempInput.addEventListener('input', () => {
+    const v = parseFloat(tempInput.value);
+    tempValue.textContent = v === 0 ? '0.0 (greedy)' : v.toFixed(1);
+  });
+
+  let currentSource = null;
+  const pgHistory = [];
+
+  function renderPgHistory() {
+    const wrap = document.getElementById('pg-history');
+    wrap.innerHTML = pgHistory.slice().reverse().map(h => `
+      <div class="pg-history-item"><div class="q">${escapeHtml(h.prompt)}</div><div class="a">${escapeHtml(h.response)}</div></div>
+    `).join('');
+  }
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  function askModel() {
+    const prompt = document.getElementById('pg-prompt').value.trim();
+    if (!prompt || currentSource) return;
+    const maxTokens = Math.max(1, Math.min(200, parseInt(document.getElementById('pg-max-tokens').value, 10) || 40));
+    const temperature = parseFloat(tempInput.value) || 0;
+
+    const askBtn = document.getElementById('pg-ask');
+    const stopBtn = document.getElementById('pg-stop');
+    const responseEl = document.getElementById('pg-response');
+    const metaEl = document.getElementById('pg-meta');
+    askBtn.disabled = true; stopBtn.style.display = 'inline-flex';
+    responseEl.innerHTML = `<span class="prompt-echo">${escapeHtml(prompt)}</span> <span class="piece" id="pg-live"></span><span class="pg-cursor"></span>`;
+    metaEl.textContent = 'generating…';
+    const liveEl = document.getElementById('pg-live');
+
+    const started = performance.now();
+    let fullText = '';
+    const url = `/api/generate/stream?prompt=${encodeURIComponent(prompt)}&max_new_tokens=${maxTokens}&temperature=${temperature}`;
+    const source = new EventSource(url);
+    currentSource = source;
+
+    source.onmessage = (ev) => {
+      const data = JSON.parse(ev.data);
+      if (data.piece !== undefined) {
+        fullText += data.piece;
+        liveEl.textContent = fullText;
+      } else if (data.done) {
+        finish();
+      } else if (data.error) {
+        metaEl.textContent = `error: ${data.error}`;
+        finish();
+      }
+    };
+    source.onerror = () => finish();
+
+    function finish() {
+      if (!currentSource) return;
+      source.close();
+      currentSource = null;
+      askBtn.disabled = false; stopBtn.style.display = 'none';
+      document.querySelectorAll('.pg-cursor').forEach(c => c.remove());
+      const elapsed = ((performance.now() - started) / 1000).toFixed(1);
+      metaEl.textContent = `${elapsed}s · ${fullText.trim().split(/\s+/).filter(Boolean).length} words`;
+      if (fullText.trim()) {
+        pgHistory.push({ prompt, response: fullText });
+        renderPgHistory();
+      }
+    }
+  }
+  document.getElementById('pg-ask').addEventListener('click', askModel);
+  document.getElementById('pg-prompt').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) askModel();
+  });
+  document.getElementById('pg-stop').addEventListener('click', () => {
+    if (currentSource) { currentSource.close(); currentSource = null; }
+    document.getElementById('pg-ask').disabled = false;
+    document.getElementById('pg-stop').style.display = 'none';
+    document.querySelectorAll('.pg-cursor').forEach(c => c.remove());
+    document.getElementById('pg-meta').textContent = 'stopped';
+  });
+
+  // ---------------- activity log ----------------
+  document.getElementById('log-filters').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-filter]');
+    if (!btn) return;
+    activeLogFilter = btn.dataset.filter;
+    document.querySelectorAll('#log-filters button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (lastData) renderLog(lastData.events, true);
+  });
+
+  function renderLog(events, forceFull) {
+    const log = document.getElementById('log');
+    const isNew = events.length > seenEventCount;
+    const startIdx = isNew ? seenEventCount : 0;
+    if (!forceFull && !isNew && events.length === seenEventCount) return;
+    log.innerHTML = '';
+    events.forEach((e, i) => {
+      const cat = categorize(e.message);
+      if (activeLogFilter !== 'all' && cat !== activeLogFilter) return;
+      const row = document.createElement('div');
+      row.className = 'log-entry ' + cat + (!forceFull && i >= startIdx ? ' enter' : '');
+      row.innerHTML = `<span class="t">${fmtTime(e.time)}</span><span class="m">${e.message}</span>`;
+      log.appendChild(row);
+    });
+    seenEventCount = events.length;
+  }
+
+  // ---------------- polling ----------------
+  async function poll() {
+    try {
+      const res = await fetch('/api/status');
+      render(await res.json());
+    } catch (err) {
+      // server briefly unreachable -- just retry next tick
+    }
+  }
   poll();
   setInterval(poll, 1000);
 })();

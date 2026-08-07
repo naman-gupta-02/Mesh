@@ -76,6 +76,11 @@ class Cluster:
         # (timestamp, message) pairs, newest last. deque.append is atomic
         # under the GIL, so this is safe to touch without self._lock.
         self._events: deque[tuple[float, str]] = deque(maxlen=200)
+        # (timestamp, elapsed_ms, recovered) per completed job -- the
+        # dashboard's latency sparkline reads this straight from status()
+        # instead of regex-scraping the event log text.
+        self._latency_history: deque[tuple[float, float, bool]] = deque(maxlen=50)
+        self._tokenizer = None  # lazily loaded on first generate() call
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
@@ -173,6 +178,11 @@ class Cluster:
         submission should re-profile and re-plan."
         join_as="standby": holds it in reserve for future recover_job()
         calls instead, without touching the current partition.
+
+        Raises ValueError if the node loaded a different base model than
+        this cluster -- mixing shards from two different models wouldn't
+        error loudly, it'd just silently produce garbage output, so this is
+        checked up front rather than discovered from bad generations later.
         """
         if join_as not in ("active", "standby"):
             raise ValueError(f"join_as must be 'active' or 'standby', got {join_as!r}")
@@ -180,7 +190,17 @@ class Cluster:
         self._log(f"device joining: {node.node_id} ({join_as}) at {node.address}")
         channel = grpc.insecure_channel(node.address)
         grpc.channel_ready_future(channel).result(timeout=timeout)
-        mesh_pb2_grpc.NodeDaemonStub(channel).Heartbeat(mesh_pb2.HeartbeatRequest(), timeout=timeout)
+        heartbeat = mesh_pb2_grpc.NodeDaemonStub(channel).Heartbeat(mesh_pb2.HeartbeatRequest(), timeout=timeout)
+
+        if heartbeat.model_name and heartbeat.model_name != self.model_name:
+            self._log(
+                f"device rejected: {node.node_id} loaded {heartbeat.model_name!r}, "
+                f"cluster expects {self.model_name!r}"
+            )
+            raise ValueError(
+                f"{node.node_id} loaded model {heartbeat.model_name!r} but this cluster runs "
+                f"{self.model_name!r} -- restart its daemon with --model {self.model_name}"
+            )
 
         with self._lock:
             if join_as == "standby":
@@ -238,6 +258,7 @@ class Cluster:
                 self._jobs_submitted += 1
                 self._jobs_recovered += 1
                 self._last_job_ms = elapsed_ms
+                self._latency_history.append((time.time(), elapsed_ms, True))
             self._log(f"job {job_id[:8]} recovered in {elapsed_ms:.0f}ms")
             return result
 
@@ -245,8 +266,56 @@ class Cluster:
         with self._lock:
             self._jobs_submitted += 1
             self._last_job_ms = elapsed_ms
+            self._latency_history.append((time.time(), elapsed_ms, False))
         self._log(f"job {job_id[:8]} completed in {elapsed_ms:.0f}ms")
         return result
+
+    def _get_tokenizer(self):
+        if self._tokenizer is None:
+            from transformers import GPT2Tokenizer
+
+            self._tokenizer = GPT2Tokenizer.from_pretrained(self.model_name)
+        return self._tokenizer
+
+    def generate_stream(self, prompt: str, max_new_tokens: int = 40, temperature: float = 0.0):
+        """Actually "asks the model something": greedy (temperature=0) or
+        sampled (temperature>0) autoregressive decoding, yielding each
+        decoded text piece as it's produced.
+
+        Every new token costs one full pipeline pass -- submit() re-runs
+        the whole sequence-so-far through every shard from scratch, since
+        ModelShard has no cross-request KV-cache. That's fine for a short
+        demo prompt; it's the honest cost of this being v1 (a real
+        optimization would cache attention keys/values across steps, the
+        same way HF's `generate()` does internally).
+        """
+        tokenizer = self._get_tokenizer()
+        input_ids = tokenizer(prompt, return_tensors="pt").input_ids
+        eos_token_id = tokenizer.eos_token_id
+
+        for _ in range(max_new_tokens):
+            result = self.submit(input_ids)
+            next_token_logits = result.logits[0, -1]
+
+            if temperature and temperature > 0:
+                probs = torch.softmax(next_token_logits / temperature, dim=-1)
+                next_token = torch.multinomial(probs, num_samples=1).item()
+            else:
+                next_token = next_token_logits.argmax().item()
+
+            if next_token == eos_token_id:
+                break
+
+            piece = tokenizer.decode([next_token])
+            input_ids = torch.cat([input_ids, torch.tensor([[next_token]])], dim=1)
+            yield piece
+
+    def generate(self, prompt: str, max_new_tokens: int = 40, temperature: float = 0.0) -> str:
+        """Blocking convenience wrapper around generate_stream() for callers
+        that just want the final text (see mesh/dashboard_server.py's
+        streaming SSE endpoint for the token-by-token version).
+        """
+        return "".join(self.generate_stream(prompt, max_new_tokens=max_new_tokens, temperature=temperature))
 
     def _recover_and_heal(self, job_id: str, input_ids: torch.Tensor) -> JobResult:
         with self._lock:
@@ -320,6 +389,10 @@ class Cluster:
 
             standby_ids = [n.node_id for n in self._standby_pool]
             events = [{"time": t, "message": m} for t, m in list(self._events)[-60:]]
+            latency_history = [
+                {"time": t, "elapsed_ms": ms, "recovered": recovered}
+                for t, ms, recovered in self._latency_history
+            ]
 
             return {
                 "model_name": self.model_name,
@@ -330,5 +403,6 @@ class Cluster:
                 "jobs_submitted": self._jobs_submitted,
                 "jobs_recovered": self._jobs_recovered,
                 "last_job_ms": self._last_job_ms,
+                "latency_history": latency_history,
                 "events": events,
             }

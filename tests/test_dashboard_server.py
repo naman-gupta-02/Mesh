@@ -1,8 +1,11 @@
 """mesh/dashboard_server.py's HTTP endpoints: GET /, GET /api/status,
-POST /api/devices (add a device), POST /api/devices/<id>/kill.
+POST /api/devices (add a device, both "spawn" and "connect" modes),
+POST /api/devices/<id>/kill, GET /api/generate/stream (SSE playground feed).
 """
 
 import json
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -153,3 +156,68 @@ def test_kill_endpoint(running_server):
 def test_kill_endpoint_unknown_node(running_server):
     status, data = _post("/api/devices/does-not-exist/kill", {})
     assert status == 404
+
+
+def test_add_device_connect_mode_onboards_external_daemon(running_server):
+    """mode="connect" is the "add my friend's laptop" path: the daemon is
+    already running somewhere the dashboard's own Rig never spawned, and
+    the endpoint must onboard it by address alone, not try to spawn it.
+    """
+    cluster, rig = running_server
+    external_address = f"127.0.0.1:{BASE_PORT + 50}"
+    proc = subprocess.Popen(
+        [
+            sys.executable, "-m", "mesh.daemon",
+            "--node-id", "external-friend-laptop", "--address", external_address, "--model", "gpt2",
+        ]
+    )
+    try:
+        _wait_ready(external_address)
+        status, data = _post(
+            "/api/devices",
+            {"node_id": "external-friend-laptop", "mode": "connect", "address": external_address, "join_as": "active"},
+        )
+        assert status == 202
+        assert data["address"] == external_address
+        assert "external-friend-laptop" not in rig.processes  # never spawned locally
+
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            node_ids = {n["node_id"] for n in cluster.status()["nodes"]}
+            if "external-friend-laptop" in node_ids:
+                break
+            time.sleep(0.5)
+        else:
+            pytest.fail("externally-connected device never appeared in cluster status")
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def test_add_device_connect_mode_requires_address(running_server):
+    status, data = _post("/api/devices", {"node_id": "no-address-device", "mode": "connect"})
+    assert status == 400
+    assert "address" in data["error"]
+
+
+def test_generate_stream_endpoint_streams_sse_events(running_server):
+    url = f"http://127.0.0.1:{DASHBOARD_PORT}/api/generate/stream?prompt=Hello+there&max_new_tokens=3&temperature=0"
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        assert resp.status == 200
+        assert resp.headers.get("Content-Type") == "text/event-stream"
+        body = resp.read().decode()
+
+    data_lines = [line[len("data: "):] for line in body.splitlines() if line.startswith("data: ")]
+    events = [json.loads(line) for line in data_lines]
+    assert events, "expected at least one SSE event"
+    assert events[-1] == {"done": True}
+    assert any("piece" in e for e in events)
+
+
+def test_generate_stream_endpoint_requires_prompt(running_server):
+    status, data = _get("/api/generate/stream?max_new_tokens=3")
+    assert status == 400
+    assert "prompt" in data["error"]

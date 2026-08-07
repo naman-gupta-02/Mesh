@@ -13,6 +13,7 @@ fault-tolerance demos used) and watch the dashboard react in real time.
 Runs until Ctrl+C.
 """
 
+import argparse
 import threading
 import time
 import webbrowser
@@ -22,7 +23,7 @@ import torch
 from transformers import GPT2Tokenizer
 
 from mesh.cluster import Cluster
-from mesh.coordinator import plan_partition
+from mesh.coordinator import model_layer_count, plan_partition
 from mesh.dashboard_server import serve
 from mesh.net_coordinator import NodeHandle, benchmark_nodes, load_shards
 from mesh.proto import mesh_pb2, mesh_pb2_grpc
@@ -59,7 +60,20 @@ def job_loop(cluster: Cluster, input_ids: torch.Tensor, stop: threading.Event) -
         stop.wait(JOB_INTERVAL_SECONDS)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the Mesh live dashboard demo.")
+    parser.add_argument(
+        "--model", default="gpt2",
+        help="Any GPT-2-family checkpoint on the HF Hub (gpt2, gpt2-medium, gpt2-large, distilgpt2, ...). "
+             "Every daemon (including ones added later) must use the same model.",
+    )
+    parser.add_argument("--port", type=int, default=DASHBOARD_PORT, help="Dashboard HTTP port.")
+    parser.add_argument("--prompt", default=PROMPT, help="Prompt the background job loop keeps submitting.")
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     rig = Rig(base_port=BASE_PORT)
     all_devices = PRIMARY_DEVICES + STANDBY_DEVICES
     handles = {}
@@ -69,7 +83,7 @@ def main() -> None:
         # the dashboard's "Add device" form get ports that don't collide.
         address = f"127.0.0.1:{rig.allocate_port()}"
         handles[node_id] = NodeHandle(node_id=node_id, address=address)
-        rig.spawn(node_id, address, scale)
+        rig.spawn(node_id, address, scale, model_name=args.model)
 
     print(f"Starting {len(all_devices)} node daemons...")
     cluster = None
@@ -83,8 +97,9 @@ def main() -> None:
         primary_nodes = [handles[node_id] for node_id, _ in PRIMARY_DEVICES]
         standby_nodes = [handles[node_id] for node_id, _ in STANDBY_DEVICES]
 
+        num_layers = model_layer_count(args.model)
         profiles = benchmark_nodes(primary_nodes)
-        assignments = plan_partition(12, profiles)
+        assignments = plan_partition(num_layers, profiles)
         load_shards(primary_nodes, assignments)
 
         cluster = Cluster(
@@ -94,16 +109,16 @@ def main() -> None:
             # contention (e.g. a rebalance's benchmark step) as a false
             # node death. Real, separate devices wouldn't need this slack.
             primary_nodes, assignments, standby_nodes,
-            heartbeat_interval=3.0, miss_threshold=3, model_name="gpt2",
+            heartbeat_interval=3.0, miss_threshold=3, model_name=args.model,
         )
 
-        server = serve(cluster, rig, port=DASHBOARD_PORT)
-        url = f"http://127.0.0.1:{DASHBOARD_PORT}"
+        server = serve(cluster, rig, port=args.port)
+        url = f"http://127.0.0.1:{args.port}"
         print(f"Dashboard running at {url}")
         webbrowser.open(url)
 
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-        input_ids = tokenizer(PROMPT, return_tensors="pt").input_ids
+        tokenizer = GPT2Tokenizer.from_pretrained(args.model)
+        input_ids = tokenizer(args.prompt, return_tensors="pt").input_ids
 
         loop_thread = threading.Thread(target=job_loop, args=(cluster, input_ids, stop), daemon=True)
         loop_thread.start()

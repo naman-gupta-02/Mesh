@@ -25,7 +25,7 @@ class Rig:
             self._next_port += 1
             return port
 
-    def spawn(self, node_id: str, address: str, scale: float) -> subprocess.Popen:
+    def spawn(self, node_id: str, address: str, scale: float, model_name: str = "gpt2") -> subprocess.Popen:
         proc = subprocess.Popen(
             [
                 sys.executable,
@@ -37,6 +37,8 @@ class Rig:
                 address,
                 "--simulated-scale",
                 str(scale),
+                "--model",
+                model_name,
             ]
         )
         with self._lock:

@@ -104,7 +104,7 @@ class NodeDaemonServicer(mesh_pb2_grpc.NodeDaemonServicer):
         )
 
     def Heartbeat(self, request, context):
-        return mesh_pb2.HeartbeatResponse(node_id=self.node_id, alive=True)
+        return mesh_pb2.HeartbeatResponse(node_id=self.node_id, alive=True, model_name=self.model_name)
 
     def GetCheckpoint(self, request, context):
         checkpoint = self._checkpoints.get(request.job_id)

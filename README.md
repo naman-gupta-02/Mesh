@@ -317,12 +317,127 @@ actual HTTP endpoints (`urllib`, no new dependency) against a real running
 cluster: adding a device, killing one, and the error paths (missing
 `node_id`, duplicate device, unknown node).
 
+## Phase 5 — real devices, choosing a model, and asking it something
+
+Three things Phase 4 didn't have: a real (not just simulated) way to add
+someone else's machine, a choice of which model to run, and an actual way
+to query the model instead of just checking next-token logits. The
+dashboard was also restructured around these — one long page stopped being
+the right shape once there was a device-management flow *and* a chat-style
+feature to fit in.
+
+### Adding a real device (a friend's laptop)
+
+`mesh/dashboard_server.py`'s `POST /api/devices` now takes a `mode`:
+- `"spawn"` (default) — what Phase 4 already did: spawns a local daemon
+  process as a stand-in for hardware you don't have handy.
+- `"connect"` — onboards a daemon **already running somewhere else**, by
+  address alone. Nothing is spawned; `Cluster.add_device()` just connects
+  to it. This is the real path: your friend runs
+  `python -m mesh.daemon --node-id friends-laptop --address 0.0.0.0:PORT --model <same model>`
+  on their own machine (same WiFi/LAN — a firewall or a different VPN can
+  block the port), finds their LAN IP
+  (`ipconfig getifaddr en0` / `hostname -I` / `ipconfig`), and you set
+  `Address` in the dashboard's "Connect real device" form to
+  `<their-lan-ip>:PORT`.
+- Verified for real in this environment the only way two genuinely
+  separate processes can be verified here: a daemon started completely
+  independently of the dashboard's own process-spawning code (`mesh/rig.py`),
+  onboarded purely by address through the "connect" form, immediately
+  picked up real jobs after the next rebalance. True cross-machine
+  networking (two physical computers) isn't something this sandboxed
+  environment can exercise, but the code path — gRPC over a real
+  `host:port`, no shared process, no shared filesystem — is identical to
+  what runs when the second machine is actually a second machine.
+
+**Model-mismatch guard:** `HeartbeatResponse` now carries the daemon's
+configured `--model`. `add_device()` checks it against the cluster's model
+before onboarding — mixing shards from two different checkpoints wouldn't
+error, it'd just silently produce garbage output, so this is checked up
+front (`ValueError`, surfaced in the dashboard's event log) rather than
+discovered from bad generations later.
+
+### Choosing a model
+
+Anything in the GPT-2 family works — `gpt2`, `gpt2-medium`, `gpt2-large`,
+`distilgpt2`, or any compatible checkpoint on the HF Hub:
+
+```
+python3 scripts/run_dashboard_demo.py --model gpt2-medium
+```
+
+`mesh/coordinator.py`'s new `model_layer_count(model_name)` reads the
+model's config (not its weights) to size the partition, so nothing is
+hardcoded to GPT-2-small's 12 layers anymore. Swapping models is a
+per-session choice made at startup — there's no live "change model" button,
+since every daemon in the pipeline holds weights for one specific model and
+swapping would mean tearing down and rebuilding the whole cluster, not
+patching a running one.
+
+### Asking the model something
+
+`Cluster.generate()` / `Cluster.generate_stream()` do real autoregressive
+decoding — greedy (`temperature=0`, deterministic) or sampled
+(`temperature>0`) — yielding each decoded piece as it's produced. Every new
+token costs one full pipeline pass (no cross-request KV-cache — `ModelShard`
+re-runs the whole sequence-so-far from scratch each step), so this is slow
+relative to a real LLM chat UI; that's an honest v1 trade-off, not a bug.
+`GET /api/generate/stream` streams it to the browser over Server-Sent
+Events.
+
+### The redesigned dashboard
+
+Still one self-contained HTML file, no CDN, no frameworks — but now four
+tabs instead of one long scroll:
+- **Overview** — stat tiles, an SVG pipeline topology diagram (nodes as
+  animated circles, flowing dots along the connectors, click a node for a
+  detail panel — the modal links straight to the Devices tab, not a
+  duplicate kill button), and a latency sparkline (line + filled area,
+  recovered jobs marked as distinct points) built from a new
+  `Cluster.status()["latency_history"]` field.
+- **Devices** — the node grid, standby pool, and the add-device form with
+  its "Simulate here" / "Connect real device" toggle (the CLI snippet
+  updates live to match whichever mode is selected, with the cluster's
+  actual model name interpolated in).
+- **Playground** — the "ask the model" feature: a prompt box, max-tokens
+  and temperature controls, a streamed response with a blinking cursor, and
+  a running history of past exchanges for the session.
+- **Activity** — the event log, with filter chips (jobs / recoveries /
+  rebalance / devices / failures / playground) — moved off the main view
+  so it's there when you want it instead of dominating the page.
+
+A small always-visible ticker under the header shows the latest event
+regardless of which tab is open.
+
+### Run it
+
+```
+python3 scripts/run_dashboard_demo.py [--model gpt2] [--port 8080] [--prompt "..."]
+```
+
+### Test
+
+```
+pytest tests/
+```
+
+`tests/test_generation.py` covers `generate()`/`generate_stream()`
+(produces text, greedy decoding is deterministic, streamed pieces match the
+blocking call, output never exceeds `max_new_tokens`) and the model-mismatch
+rejection (using a daemon started with a nonexistent model name — the
+mismatch check only needs the *configured* name from `--model`, never
+actually loads it, so this doesn't download anything extra).
+`tests/test_dashboard_server.py` gained coverage for `mode="connect"`
+(onboarding a daemon spawned completely outside the dashboard's own `Rig`)
+and the SSE streaming endpoint.
+
 ## What's next (not built yet)
 
 Per the original build order: run on real separate hardware (not just
 localhost — architecture doesn't change, just point `--address` at a LAN
 IP for a daemon, or a real IP into `add_device()`), then a closed campus
 beta. Also pending: sandboxed node daemons, signed/checksummed weight
-distribution, and latency-aware scheduling (preferring low-latency hops
-when chaining nodes — meaningful once nodes are on real, distinct networks
-instead of all being localhost).
+distribution, latency-aware scheduling (preferring low-latency hops when
+chaining nodes — meaningful once nodes are on real, distinct networks
+instead of all being localhost), and a KV-cache across generation steps so
+the playground doesn't re-run the whole prompt on every token.

@@ -39,6 +39,11 @@ message HeartbeatRequest {}
 message HeartbeatResponse {
   string node_id = 1;
   bool alive = 2;
+  // Which base model this daemon loaded (--model at startup). add_device()
+  // checks this against the cluster's model before onboarding a node --
+  // mixing shards from two different models silently produces garbage
+  // output rather than an obvious error, so this is the guard rail.
+  string model_name = 3;
 }
 
 message StageTiming {

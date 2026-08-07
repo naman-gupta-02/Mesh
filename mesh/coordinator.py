@@ -27,6 +27,17 @@ class ShardAssignment:
         return self.layer_end - self.layer_start
 
 
+def model_layer_count(model_name: str) -> int:
+    """How many transformer blocks `model_name` has, without downloading its
+    weights -- just the (tiny) config file. Lets the coordinator support any
+    GPT-2-family checkpoint (gpt2, gpt2-medium, distilgpt2, ...) instead of
+    a hardcoded layer count.
+    """
+    from transformers import GPT2Config
+
+    return GPT2Config.from_pretrained(model_name).n_layer
+
+
 def plan_partition(num_layers: int, profiles: list[NodeProfile]) -> list[ShardAssignment]:
     if not profiles:
         raise ValueError("need at least one node profile")
