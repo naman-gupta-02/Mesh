@@ -265,7 +265,17 @@
   .form-msg { font-size: 12px; margin-top: 4px; min-height: 16px; }
   .form-msg.ok { color: var(--status-good); }
   .form-msg.err { color: var(--status-critical); }
-  .help-text { font-size: 11.5px; color: var(--text-muted); margin: -6px 0 12px; line-height: 1.5; }
+  .add-steps {
+    display: flex; flex-direction: column; gap: 7px; margin: 0 0 16px; padding-left: 20px;
+    font-size: 12.5px; color: var(--text-secondary); line-height: 1.55;
+  }
+  .add-steps li::marker { color: var(--series-1); font-weight: 700; }
+  .add-steps code {
+    font-family: ui-monospace, "SF Mono", monospace; font-size: 11px;
+    background: var(--surface-2); padding: 1px 5px; border-radius: 4px;
+  }
+  .add-steps a { color: var(--series-1); font-weight: 600; text-decoration: none; }
+  .add-steps a:hover { text-decoration: underline; }
 
   .snippet {
     background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
@@ -432,6 +442,20 @@
         <button type="button" data-mode="connect">Connect real device</button>
       </div>
 
+      <ol class="add-steps" id="steps-spawn">
+        <li>Enter a <strong>Node ID</strong> (any name) and a <strong>relative speed</strong> below — higher numbers simulate faster hardware.</li>
+        <li>Choose whether it joins as <strong>active</strong> (rebalances in immediately) or <strong>standby</strong> (held in reserve for recovery).</li>
+        <li>Click <strong>Add device</strong> — a real daemon process spawns on this machine, running the same model.</li>
+        <li>Watch the <a href="#" data-goto-tab="activity">Activity tab</a> or the ticker above for <code>device joined</code> → <code>rebalanced</code>.</li>
+      </ol>
+      <ol class="add-steps" id="steps-connect" style="display:none">
+        <li>On <strong>their</strong> machine, find their LAN IP: macOS <code>ipconfig getifaddr en0</code> · Linux <code>hostname -I</code> · Windows <code>ipconfig</code>.</li>
+        <li>They run the command in the box below, on their machine — same model as this cluster, same WiFi/LAN as you.</li>
+        <li>Make sure a firewall (or VPN splitting you onto different subnets) isn't blocking the port.</li>
+        <li>Back here: enter the <strong>same Node ID</strong> they used, set <strong>Address</strong> to <code>&lt;their-lan-ip&gt;:PORT</code>, choose <strong>Joins as</strong>, and click <strong>Connect device</strong>.</li>
+        <li>Watch the <a href="#" data-goto-tab="activity">Activity tab</a> for <code>device joined</code> → <code>rebalanced</code> — or <code>rejected</code> if the model doesn't match (the guard rail, not a bug).</li>
+      </ol>
+
       <form class="add-form" id="add-form-spawn">
         <div class="field"><label for="f-node-id">Node ID</label><input id="f-node-id" placeholder="my-laptop" required></div>
         <div class="field"><label for="f-scale">Relative speed</label><input id="f-scale" type="number" step="0.1" min="0.1" value="1.0"></div>
@@ -459,10 +483,6 @@
       </form>
       <div class="form-msg" id="form-msg"></div>
 
-      <div class="help-text" id="mode-help">
-        Spawns a real gRPC daemon process on this machine, running the same model, and onboards it —
-        a stand-in for a device you don't have handy.
-      </div>
       <div class="snippet" id="cli-snippet">
         <button class="copy-btn" id="copy-btn">Copy</button>
         <span id="cli-text">loading…</span>
@@ -570,6 +590,9 @@
   function gotoTab(name) {
     document.querySelector(`nav.tabs button[data-tab="${name}"]`).click();
   }
+  document.querySelectorAll('a[data-goto-tab]').forEach(a => {
+    a.addEventListener('click', (e) => { e.preventDefault(); gotoTab(a.dataset.gotoTab); });
+  });
 
   // ---------------- helpers ----------------
   function hashColor(id) {
@@ -826,9 +849,8 @@ python -m mesh.daemon --node-id my-laptop --address 127.0.0.1:PORT --model ${mod
       const isConnect = btn.dataset.mode === 'connect';
       document.getElementById('add-form-spawn').style.display = isConnect ? 'none' : 'flex';
       document.getElementById('add-form-connect').style.display = isConnect ? 'flex' : 'none';
-      document.getElementById('mode-help').textContent = isConnect
-        ? "Onboards a daemon already running elsewhere on your network (a friend's laptop, another room) — nothing is spawned here."
-        : "Spawns a real gRPC daemon process on this machine, running the same model, and onboards it — a stand-in for a device you don't have handy.";
+      document.getElementById('steps-spawn').style.display = isConnect ? 'none' : 'flex';
+      document.getElementById('steps-connect').style.display = isConnect ? 'flex' : 'none';
       cliModelName = null; // force snippet refresh for the new mode
       if (lastData) updateCliSnippet(lastData.model_name);
     });
